@@ -1,0 +1,6 @@
+10 PRINT Q
+20 LET A$="hello"
+30 LET A$=A$+" world"
+40 PRINT A$
+50 GOTO 9999
+60 PRINT 42

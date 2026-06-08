@@ -1,0 +1,475 @@
+options {
+    STATIC = false;
+}
+
+PARSER_BEGIN(GWBasic)
+package de.hft_stuttgart.cpl;
+
+import java.io.InputStream;
+import java.io.IOException;
+import java.io.FileInputStream;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Stack;
+import java.util.TreeMap;
+
+public class GWBasic {
+
+    /* ---- book-keeping records ---- */
+    public record WhileItem(String id, String startLabel, String endLabel) {}
+    public record ForItem(String var, String topLabel, String endLabel,
+                          String limVar, String stepVar) {}
+
+    /* ---- transpiler state ---- */
+    Set<Integer>      definedLines = new HashSet<>();   // every line number that exists in the program
+    Stack<WhileItem>  whileStack   = new Stack<>();
+    Stack<ForItem>    forStack     = new Stack<>();
+    List<Integer>     gosubReturns = new ArrayList<>(); // one entry per GOSUB call site
+    boolean           hasReturn    = false;
+    int               nextId       = 0;                 // unique id for IF blocks
+    int               gosubCounter = 0;                 // unique id for GOSUB return points
+    int               forCounter   = 0;                 // unique id for FOR loops
+    String            currentLine;
+
+    /* ============================================================
+     *  main():
+     *    1. read the whole .bas file
+     *    2. bring all lines into strictly increasing numeric order
+     *       (GW-BASIC Manual section 2.5 - line numbers define the
+     *        order in which statements are stored / executed)
+     *    3. remember which line numbers exist (for GOTO/GOSUB checks)
+     *    4. feed the re-ordered source to the generated parser
+     * ============================================================ */
+    public static void main(String[] args) throws Exception {
+        InputStream raw = (args.length == 0) ? System.in : new FileInputStream(args[0]);
+
+        BufferedReader br = new BufferedReader(new InputStreamReader(raw, StandardCharsets.UTF_8));
+        TreeMap<Integer, String> program = new TreeMap<>();   // TreeMap -> ascending line order
+        String ln;
+        while ((ln = br.readLine()) != null) {
+            String t = ln.trim();
+            if (t.isEmpty()) continue;
+            int sp = 0;
+            while (sp < t.length() && Character.isDigit(t.charAt(sp))) sp++;
+            if (sp == 0) {
+                System.err.printf("WARNING: line without a line number ignored: %s%n", t);
+                continue;
+            }
+            int num = Integer.parseInt(t.substring(0, sp));
+            if (program.containsKey(num))
+                System.err.printf("WARNING: duplicate line number %d; later definition wins%n", num);
+            program.put(num, t);
+        }
+
+        StringBuilder sorted = new StringBuilder();
+        for (var e : program.entrySet()) sorted.append(e.getValue()).append('\n');
+
+        GWBasic parser = new GWBasic(
+            new ByteArrayInputStream(sorted.toString().getBytes(StandardCharsets.UTF_8)));
+        parser.definedLines = new HashSet<>(program.keySet());
+        try {
+            parser.parse();
+        } catch (ParseException pe) {
+            System.err.println(pe.getMessage());
+        }
+    }
+
+    /* emit an indented runtime call terminated with ';' */
+    public void output(String format, Object... args) {
+        System.out.printf("    ");
+        System.out.printf(format, args);
+        System.out.printf(";%n");
+    }
+    /* emit a C label */
+    public void label(String format, Object... args) {
+        System.out.printf("  ");
+        System.out.printf(format, args);
+        System.out.printf(":%n");
+    }
+    /* emit GOTO with target validation (undefined line -> runtime warning, never a C error) */
+    public void emitGoto(String lineImage) {
+        if (definedLines.contains(Integer.parseInt(lineImage)))
+            output("JUMP(label_%s_init)", lineImage);
+        else
+            output("bad_line_number(%s)", lineImage);
+    }
+}
+PARSER_END(GWBasic)
+
+/* ===================== TOKENS ===================== */
+TOKEN: {
+    <OPAREN: "(">
+|   <CPAREN: ")">
+|   <PLUS:   "+">
+|   <MINUS:  "-">
+|   <TIMES:  "*">
+|   <DIVIDE: "/">
+|   <MODULO: "%">
+|   <EQUAL:  "=">
+|   <NE:     "<>">
+|   <LE:     "<=">
+|   <GE:     ">=">
+|   <LT:     "<">
+|   <GT:     ">">
+|   <COLON:  ":">
+}
+
+/* keywords must precede <NAME> so they win on an equal-length match */
+TOKEN: {
+    <PRINT:  "PRINT">
+|   <LET:    "LET">
+|   <WHILE:  "WHILE">
+|   <WEND:   "WEND">
+|   <GOTO:   "GOTO">
+|   <GOSUB:  "GOSUB">
+|   <RETURN: "RETURN">
+|   <IF:     "IF">
+|   <THEN:   "THEN">
+|   <ELSE:   "ELSE">
+|   <FOR:    "FOR">
+|   <TO:     "TO">
+|   <STEP:   "STEP">
+|   <NEXT:   "NEXT">
+|   <AND:    "AND">
+|   <OR:     "OR">
+|   <NOT:    "NOT">
+}
+
+TOKEN: {
+    <FLOAT_NUMBER: ((["0"-"9"])+ "." (["0"-"9"])*) | ("." (["0"-"9"])+)>
+|   <DEC_NUMBER:   ["0"-"9"] (["0"-"9"])*>
+|   <HEX_NUMBER:   "&" ["H","h"] (["0"-"9","A"-"F","a"-"f"])+>
+|   <OCT_NUMBER:   "&" ["O","o"] (["0"-"7"])+>
+|   <STRING:       "\"" (~["\""])* "\"">
+|   <NAME:         ["a"-"z","A"-"Z"] (["a"-"z","A"-"Z","0"-"9"])* ("$")?>
+|   <EOL:          "\r" | "\n" | "\r\n">
+}
+
+SKIP: {
+    " "
+|   "\t"
+}
+
+/* ===================== GRAMMAR ===================== */
+
+void parse():
+{}
+{
+    prolog() ( line() )* epilog() <EOF>
+    { return; }
+}
+
+void prolog():
+{}
+{
+    {
+        try {
+            InputStream prologInput = getClass().getResourceAsStream("/prolog.c");
+            prologInput.transferTo(System.out);
+            prologInput.close();
+        } catch (IOException e) {
+            throw new ParseException("Error loading prolog.c");
+        }
+    }
+}
+
+void epilog():
+{}
+{
+    {
+        if (!whileStack.isEmpty()) throw new ParseException("WHILE without WEND");
+        if (!forStack.isEmpty())   throw new ParseException("FOR without NEXT");
+
+        /* jump over the GOSUB dispatcher that sits at the very end */
+        output("JUMP(__prog_end)");
+
+        /* dynamic RETURN dispatcher: maps a return-id back to its call site */
+        if (!gosubReturns.isEmpty() || hasReturn) {
+            label("__gosub_dispatch");
+            System.out.println("    switch (gosub_pop()) {");
+            for (int rid : gosubReturns)
+                System.out.printf("      case %d: goto ret_%d;%n", rid, rid);
+            System.out.println("      default: goto __prog_end;");
+            System.out.println("    }");
+        }
+
+        try {
+            InputStream epilogInput = getClass().getResourceAsStream("/epilog.c");
+            epilogInput.transferTo(System.out);
+            epilogInput.close();
+        } catch (IOException e) {
+            throw new ParseException("Error loading epilog.c");
+        }
+    }
+}
+
+void line():
+{
+    Token number;
+}
+{
+    number=<DEC_NUMBER>
+    {
+        currentLine = number.image;
+        label("label_%s_init", number.image);
+    }
+    stmt() ( <COLON> stmt() )*
+    {
+        label("label_%s_fini", number.image);
+    }
+    <EOL>
+}
+
+void stmt():
+{}
+{
+        printStmt()
+    |   whileStmt()
+    |   wendStmt()
+    |   gotoStmt()
+    |   gosubStmt()
+    |   returnStmt()
+    |   ifStmt()
+    |   forStmt()
+    |   nextStmt()
+    |   letStmt()          /* LET is optional, so this also covers bare assignment */
+}
+
+void printStmt():
+{}
+{
+    <PRINT> expr() { output("PRINT()"); }
+}
+
+void letStmt():
+{
+    Token id;
+}
+{
+    ( <LET> )? id=<NAME> <EQUAL> expr()
+    {
+        output("STORE(\"%s\")", id.image);
+    }
+}
+
+void whileStmt():
+{}
+{
+    <WHILE>
+    {
+        String labelStart = "while_%s_start".formatted(currentLine);
+        String labelEnd   = "while_%s_end".formatted(currentLine);
+        whileStack.push(new WhileItem(currentLine, labelStart, labelEnd));
+        label(labelStart);
+    }
+    expr()
+    {
+        output("JUMP_IF_FALSE(%s)", "while_%s_end".formatted(currentLine));
+    }
+}
+
+void wendStmt():
+{}
+{
+    <WEND>
+    {
+        if (whileStack.isEmpty()) throw new ParseException("WEND without WHILE");
+        WhileItem item = whileStack.pop();
+        output("JUMP(%s)", item.startLabel());
+        label(item.endLabel());
+    }
+}
+
+void gotoStmt():
+{
+    Token n;
+}
+{
+    <GOTO> n=<DEC_NUMBER> { emitGoto(n.image); }
+}
+
+void gosubStmt():
+{
+    Token n;
+}
+{
+    <GOSUB> n=<DEC_NUMBER>
+    {
+        if (definedLines.contains(Integer.parseInt(n.image))) {
+            int rid = ++gosubCounter;
+            gosubReturns.add(rid);
+            output("gosub_push(%d)", rid);
+            output("JUMP(label_%s_init)", n.image);
+            label("ret_%d", rid);
+        } else {
+            output("bad_line_number(%s)", n.image);
+        }
+    }
+}
+
+void returnStmt():
+{}
+{
+    <RETURN>
+    {
+        hasReturn = true;
+        output("JUMP(__gosub_dispatch)");
+    }
+}
+
+void ifStmt():
+{
+    int id;
+}
+{
+    <IF> expr()
+    {
+        id = ++nextId;
+        output("JUMP_IF_FALSE(if_%d_else)", id);
+    }
+    <THEN> branchTarget()
+    {
+        output("JUMP(if_%d_end)", id);
+        label("if_%d_else", id);
+    }
+    ( <ELSE> branchTarget() )?
+    {
+        label("if_%d_end", id);
+    }
+}
+
+/* the target of THEN / ELSE: either a line number (implicit GOTO) or a statement */
+void branchTarget():
+{
+    Token n;
+}
+{
+        n=<DEC_NUMBER> { emitGoto(n.image); }
+    |   stmt()
+}
+
+void forStmt():
+{
+    Token var;
+    int id;
+    String v, limv, stepv;
+}
+{
+    <FOR> var=<NAME>
+    {
+        id    = ++forCounter;
+        v     = var.image;
+        limv  = "__lim_"  + id;
+        stepv = "__step_" + id;
+    }
+    <EQUAL> expr() { output("STORE(\"%s\")", v); }
+    <TO>    expr() { output("STORE(\"%s\")", limv); }
+    (
+        <STEP> expr() { output("STORE(\"%s\")", stepv); }
+    |
+        { output("LOAD_CONST(1)"); output("STORE(\"%s\")", stepv); }
+    )
+    {
+        forStack.push(new ForItem(v, "for_" + id + "_top", "for_" + id + "_end", limv, stepv));
+        label("for_%d_top", id);
+        output("FOR_CONTINUE(\"%s\",\"%s\",\"%s\")", v, limv, stepv);
+        output("JUMP_IF_FALSE(for_%d_end)", id);
+    }
+}
+
+void nextStmt():
+{}
+{
+    <NEXT> ( <NAME> )?
+    {
+        if (forStack.isEmpty()) throw new ParseException("NEXT without FOR");
+        ForItem f = forStack.pop();
+        output("STEP_VAR(\"%s\",\"%s\")", f.var(), f.stepVar());
+        output("JUMP(%s)", f.topLabel());
+        label(f.endLabel());
+    }
+}
+
+/* ---------- expression grammar (lowest -> highest precedence) ---------- */
+
+void expr():
+{}
+{
+    orExpr()
+}
+
+void orExpr():
+{}
+{
+    andExpr() ( <OR> andExpr() { output("LOGIC_OR()"); } )*
+}
+
+void andExpr():
+{}
+{
+    notExpr() ( <AND> notExpr() { output("LOGIC_AND()"); } )*
+}
+
+void notExpr():
+{}
+{
+        <NOT> relExpr() { output("LOGIC_NOT()"); }
+    |   relExpr()
+}
+
+void relExpr():
+{}
+{
+    addExpr()
+    (
+          <EQUAL> addExpr() { output("CMP_EQ()"); }
+        | <NE>    addExpr() { output("CMP_NE()"); }
+        | <LT>    addExpr() { output("CMP_LT()"); }
+        | <GT>    addExpr() { output("CMP_GT()"); }
+        | <LE>    addExpr() { output("CMP_LE()"); }
+        | <GE>    addExpr() { output("CMP_GE()"); }
+    )*
+}
+
+void addExpr():
+{}
+{
+    term()
+    (
+          <PLUS>  term() { output("ADD()"); }
+        | <MINUS> term() { output("SUB()"); }
+    )*
+}
+
+void term():
+{}
+{
+    fact()
+    (
+          <TIMES>  fact() { output("MUL()"); }
+        | <DIVIDE> fact() { output("DIV()"); }
+        | <MODULO> fact() { output("MOD()"); }
+    )*
+}
+
+void fact():
+{
+    Token t;
+}
+{
+        <MINUS> fact() { output("NEG()"); }
+    |   <PLUS>  fact()
+    |   <OPAREN> expr() <CPAREN>
+    |   t=<FLOAT_NUMBER> { output("LOAD_CONST(%s)", t.image); }
+    |   t=<DEC_NUMBER>   { output("LOAD_CONST(%s)", t.image); }
+    |   t=<OCT_NUMBER>   { output("LOAD_CONST(%d)", Long.parseLong(t.image.substring(2), 8)); }
+    |   t=<HEX_NUMBER>   { output("LOAD_CONST(%d)", Long.parseLong(t.image.substring(2), 16)); }
+    |   t=<NAME>         { output("LOAD_VAR(\"%s\")", t.image); }
+    |   t=<STRING>       { output("LOAD_STR(%s)", t.image); }
+}
