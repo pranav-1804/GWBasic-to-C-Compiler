@@ -69,7 +69,7 @@ file as the only argument; the C source is written to *stdout*:
 java -cp target/classes de.hft_stuttgart.cpl.GWBasic TEST.BAS > program.c
 
 # 2) C  ->  executable   (plain gcc; no -lm needed)
-gcc -Wall -o program program.c
+gcc -Wall -o program program.c -lm
 
 # 3) run it
 ./program
@@ -78,7 +78,7 @@ gcc -Wall -o program program.c
 If you give no argument it reads from *stdin*, so this also works:
 
 ```bash
-java -cp target/classes de.hft_stuttgart.cpl.GWBasic < TEST.BAS | gcc -xc -o program - && ./program
+java -cp target/classes de.hft_stuttgart.cpl.GWBasic < TEST.BAS | gcc -xc -o program - -lm && ./program
 ```
 
 In **CLion** you typically transpile with the command above, then open the resulting
@@ -178,11 +178,24 @@ Comparisons follow GW‑BASIC's convention: true is `-1`, false is `0`.
 
 Statements: `LET` (the keyword is optional, so bare `A=…` also works), `PRINT`,
 `WHILE`/`WEND`, `FOR`/`TO`/`STEP`/`NEXT`, `IF`/`THEN`/`ELSE`, `GOTO`, `GOSUB`/`RETURN`,
-and multiple statements per line separated by `:`.
+`DIM`, and multiple statements per line separated by `:`.
 
 Expressions: `+ - * / %`, comparisons `= <> < > <= >=`, logical `AND OR NOT`, unary `-`,
 parentheses, decimal and floating constants, `&H…`/`&O…` hex/octal constants, string
 literals, numeric and `name$` string variables.
+
+1D arrays and intrinsic functions:
+
+* `DIM A(n)` allocates a one‑dimensional array with indices `0..n` (multiple arrays may be
+  declared in one `DIM`, comma‑separated). `A(i)=expr` stores and `A(i)` reads an element.
+  Referencing an array before `DIM` warns and defaults to `0..10`; an out‑of‑range index
+  warns and is ignored (read yields `0`) — never a crash.
+* `SIN(x)`, `COS(x)` — sine / cosine (radians).
+* `CEIL(x)` rounds **up**, `FLOOR(x)` rounds **down**; `INT(x)` is GW‑BASIC's floor.
+
+These functions use the C math library, which is why the generated C is linked with `-lm`.
+Because `A(i)` and `SIN(i)` share the same `name(expr)` syntax, the transpiler treats the
+known names `SIN COS CEIL FLOOR INT` as functions and everything else as an array.
 
 ---
 
@@ -195,8 +208,9 @@ literals, numeric and `name$` string variables.
 | `TEST3_GOSUB.BAS` | `GOSUB`/`RETURN` dispatch (two call sites) | `5 25 10 100 0` |
 | `TEST4_FOR.BAS` | `FOR`, `FOR…STEP -2`, string `PRINT` | `1 2 3 4 5 10 8 6 4 2 DONE` |
 | `TEST5_WARNINGS.BAS` | unassigned var + undefined jump warnings | `0` / `hello world` / `42` (+ warnings on stderr) |
+| `TEST6_ARRAY_MATH.BAS` | `DIM`/array, `CEIL`/`FLOOR`/`INT`, `SIN`/`COS` | `0 1 4 9 16 25` then `3 2 -2 0 1` |
 
-All five transpile to C that compiles cleanly under `gcc -Wall` with no warnings.
+All six transpile to C that compiles cleanly under `gcc -Wall -lm` with no warnings.
 
 ---
 
@@ -207,8 +221,9 @@ are properly 1:1 nested, and source line numbers are strictly increasing (it sor
 It does **not** assume that referenced line numbers exist, that variables were assigned, or
 that variables have the right type — all three are handled with runtime warnings as above.
 
-Out of scope (the C runtime is intentionally minimal): arrays, `DIM`, `DATA`/`READ`,
-`INPUT`, `DEF FN`, most built‑in functions, and `PRINT` with multiple `;`/`,` items.
+Out of scope (the C runtime is intentionally minimal): multi‑dimensional arrays,
+`DATA`/`READ`, `INPUT`, `DEF FN`, most other built‑in functions, and `PRINT` with multiple
+`;`/`,` items. (1D arrays via `DIM`, and `SIN`/`COS`/`CEIL`/`FLOOR`/`INT`, are supported.)
 
 ---
 

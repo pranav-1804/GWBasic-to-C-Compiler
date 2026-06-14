@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>   /* SIN, COS, CEIL, FLOOR -> compile with  gcc prog.c -lm */
 
 /* Every BASIC line gets a pair of labels so any line can be a jump target.
  * Lines that are never jumped to therefore have "unused" labels - that is by
@@ -116,6 +117,65 @@ void STORE(const char *name) {
     s->assigned = 1;
 }
 
+/* ---------- 1D arrays ---------- */
+#define ARR_MAX 64
+typedef struct { char name[64]; long size; Value *data; } ArrSlot;
+static ArrSlot arrs[ARR_MAX];
+static int     arr_count = 0;
+
+static ArrSlot *arr_find(const char *name) {
+    for (int i = 0; i < arr_count; i++)
+        if (strcmp(arrs[i].name, name) == 0) return &arrs[i];
+    return NULL;
+}
+static void arr_alloc(ArrSlot *a, const char *name, long upper) {
+    a->size = upper + 1;                       /* GW-BASIC arrays run 0..upper */
+    a->data = (Value *)malloc(sizeof(Value) * a->size);
+    for (long i = 0; i < a->size; i++)
+        a->data[i] = is_string_var(name) ? make_str(strdup("")) : make_num(0);
+}
+/* used when an array is referenced without a DIM: GW-BASIC defaults to 0..10 */
+static ArrSlot *arr_need(const char *name) {
+    ArrSlot *a = arr_find(name);
+    if (a) return a;
+    fprintf(stderr, "RUNTIME WARNING: array '%s' used before DIM; assuming DIM %s(10)\n", name, name);
+    if (arr_count >= ARR_MAX) { fprintf(stderr, "RUNTIME ERROR: too many arrays\n"); exit(1); }
+    a = &arrs[arr_count++];
+    strncpy(a->name, name, sizeof(a->name) - 1); a->name[sizeof(a->name) - 1] = '\0';
+    arr_alloc(a, name, 10);
+    return a;
+}
+void DIM_ARR(const char *name) {
+    long upper = (long)as_num(stack_pop(), "DIM");
+    ArrSlot *a = arr_find(name);
+    if (a) { free(a->data); }
+    else {
+        if (arr_count >= ARR_MAX) { fprintf(stderr, "RUNTIME ERROR: too many arrays\n"); exit(1); }
+        a = &arrs[arr_count++];
+        strncpy(a->name, name, sizeof(a->name) - 1); a->name[sizeof(a->name) - 1] = '\0';
+    }
+    arr_alloc(a, name, upper);
+}
+void LOAD_ARR(const char *name) {
+    long idx = (long)as_num(stack_pop(), "array index");
+    ArrSlot *a = arr_need(name);
+    if (idx < 0 || idx >= a->size) {
+        fprintf(stderr, "RUNTIME WARNING: index %ld out of range for array '%s'; using 0\n", idx, name);
+        stack_push(make_num(0)); return;
+    }
+    stack_push(a->data[idx]);
+}
+void STORE_ARR(const char *name) {
+    Value v   = stack_pop();
+    long  idx = (long)as_num(stack_pop(), "array index");
+    ArrSlot *a = arr_need(name);
+    if (idx < 0 || idx >= a->size) {
+        fprintf(stderr, "RUNTIME WARNING: index %ld out of range for array '%s'; ignored\n", idx, name);
+        return;
+    }
+    a->data[idx] = v;
+}
+
 /* ---------- Arithmetic ---------- */
 void ADD(void) {
     Value b = stack_pop(), a = stack_pop();
@@ -164,6 +224,12 @@ void LOGIC_NOT(void) { long a = (long)as_num(stack_pop(), "NOT"); stack_push(mak
 
 /* unary minus */
 void NEG(void) { Value a = stack_pop(); stack_push(make_num(-as_num(a, "unary -"))); }
+
+/* ---------- intrinsic functions ---------- */
+void SIN(void)   { Value a = stack_pop(); stack_push(make_num(sin(as_num(a, "SIN")))); }
+void COS(void)   { Value a = stack_pop(); stack_push(make_num(cos(as_num(a, "COS")))); }
+void CEIL(void)  { Value a = stack_pop(); stack_push(make_num(ceil(as_num(a, "CEIL"))));  }  /* round up   */
+void FLOOR(void) { Value a = stack_pop(); stack_push(make_num(floor(as_num(a, "FLOOR")))); } /* round down */
 
 /* truth value for conditional jumps */
 int pop_truth(void) {

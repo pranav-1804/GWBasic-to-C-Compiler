@@ -118,6 +118,7 @@ TOKEN: {
 |   <LT:     "<">
 |   <GT:     ">">
 |   <COLON:  ":">
+|   <COMMA:  ",">
 }
 
 /* keywords must precede <NAME> so they win on an equal-length match */
@@ -136,6 +137,7 @@ TOKEN: {
 |   <TO:     "TO">
 |   <STEP:   "STEP">
 |   <NEXT:   "NEXT">
+|   <DIM:    "DIM">
 |   <AND:    "AND">
 |   <OR:     "OR">
 |   <NOT:    "NOT">
@@ -238,7 +240,17 @@ void stmt():
     |   ifStmt()
     |   forStmt()
     |   nextStmt()
+    |   dimStmt()
     |   letStmt()          /* LET is optional, so this also covers bare assignment */
+}
+
+void dimStmt():
+{
+    Token id;
+}
+{
+    <DIM> id=<NAME> <OPAREN> expr() <CPAREN> { output("DIM_ARR(\"%s\")", id.image); }
+    ( <COMMA> id=<NAME> <OPAREN> expr() <CPAREN> { output("DIM_ARR(\"%s\")", id.image); } )*
 }
 
 void printStmt():
@@ -250,11 +262,15 @@ void printStmt():
 void letStmt():
 {
     Token id;
+    boolean isArray = false;
 }
 {
-    ( <LET> )? id=<NAME> <EQUAL> expr()
+    ( <LET> )? id=<NAME>
+    ( <OPAREN> expr() <CPAREN> { isArray = true; } )?   /* index expr is pushed first */
+    <EQUAL> expr()
     {
-        output("STORE(\"%s\")", id.image);
+        if (isArray) output("STORE_ARR(\"%s\")", id.image);
+        else         output("STORE(\"%s\")", id.image);
     }
 }
 
@@ -470,6 +486,19 @@ void fact():
     |   t=<DEC_NUMBER>   { output("LOAD_CONST(%s)", t.image); }
     |   t=<OCT_NUMBER>   { output("LOAD_CONST(%d)", Long.parseLong(t.image.substring(2), 8)); }
     |   t=<HEX_NUMBER>   { output("LOAD_CONST(%d)", Long.parseLong(t.image.substring(2), 16)); }
-    |   t=<NAME>         { output("LOAD_VAR(\"%s\")", t.image); }
+    |   t=<NAME>
+        ( <OPAREN> expr() <CPAREN>                 /* function call OR array element */
+          {
+              String fn = t.image.toUpperCase();
+              if      (fn.equals("SIN"))   output("SIN()");
+              else if (fn.equals("COS"))   output("COS()");
+              else if (fn.equals("CEIL"))  output("CEIL()");    /* round up   */
+              else if (fn.equals("FLOOR")) output("FLOOR()");   /* round down */
+              else if (fn.equals("INT"))   output("FLOOR()");   /* GW-BASIC INT = floor */
+              else                         output("LOAD_ARR(\"%s\")", t.image);
+          }
+        |
+          { output("LOAD_VAR(\"%s\")", t.image); }     /* plain scalar variable */
+        )
     |   t=<STRING>       { output("LOAD_STR(%s)", t.image); }
 }
