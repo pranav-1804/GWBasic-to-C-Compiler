@@ -282,4 +282,8 @@ void bad_line_number(int n) { fprintf(stderr, "RUNTIME WARNING: jump to undefine
 #define JUMP(label)          goto label
 #define JUMP_IF_FALSE(label) if (!pop_truth()) goto label
 
-int main(void) {
+int main(void) {    JUMP(__prog_end);
+  __prog_end: ;
+    return 0;
+}
+/* ===== end of generated GW-BASIC program ===== */

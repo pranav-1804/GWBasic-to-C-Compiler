@@ -282,4 +282,36 @@ void bad_line_number(int n) { fprintf(stderr, "RUNTIME WARNING: jump to undefine
 #define JUMP(label)          goto label
 #define JUMP_IF_FALSE(label) if (!pop_truth()) goto label
 
-int main(void) {
+int main(void) {  label_10_init:
+    LOAD_STR("--- TESTING COMPILE-TIME NESTING TRAP ---");
+    PRINT();
+  label_10_fini:
+  label_20_init:
+    LOAD_CONST(1);
+    STORE("I");
+    LOAD_CONST(5);
+    STORE("__lim_1");
+    LOAD_CONST(1);
+    STORE("__step_1");
+  for_1_top:
+    FOR_CONTINUE("I","__lim_1","__step_1");
+    JUMP_IF_FALSE(for_1_end);
+  label_20_fini:
+  label_30_init:
+    LOAD_VAR("I");
+    PRINT();
+  label_30_fini:
+  label_40_init:
+    STEP_VAR("I","__step_1");
+    JUMP(for_1_top);
+  for_1_end:
+  label_40_fini:
+  label_50_init:
+    LOAD_STR("If this compiles into an executable, your JavaCC validation check FAILED!");
+    PRINT();
+  label_50_fini:
+    JUMP(__prog_end);
+  __prog_end: ;
+    return 0;
+}
+/* ===== end of generated GW-BASIC program ===== */

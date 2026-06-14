@@ -1,0 +1,21 @@
+10 PRINT "--- STARTING HAPPY PATH TEST ---"
+20 LET A = 5
+30 LET B = 10
+40 LET C = A + B * 2
+50 PRINT "C should be 25:"
+60 PRINT C
+70 FOR I = 1 TO 3
+80   PRINT "Loop without step, I is:"
+90   PRINT I
+100 NEXT I
+110 FOR J = 10 TO 12 STEP 1
+120  PRINT "Loop with explicit step, J is:"
+130  PRINT J
+140 NEXT J
+150 LET W = 2
+160 WHILE W
+170   PRINT "While running, W is:"
+180   PRINT W
+190   LET W = W - 1
+200 WEND
+210 PRINT "--- HAPPY PATH SUCCESS ---"

@@ -216,6 +216,10 @@ label("label_%s_fini", number.image);
       nextStmt();
       break;
       }
+    case DIM:{
+      dimStmt();
+      break;
+      }
     case LET:
     case NAME:{
       letStmt();
@@ -228,6 +232,33 @@ label("label_%s_fini", number.image);
     }
 }
 
+  final public void dimStmt() throws ParseException {Token id;
+    jj_consume_token(DIM);
+    id = jj_consume_token(NAME);
+    jj_consume_token(OPAREN);
+    expr();
+    jj_consume_token(CPAREN);
+output("DIM_ARR(\"%s\")", id.image);
+    label_3:
+    while (true) {
+      switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
+      case COMMA:{
+        ;
+        break;
+        }
+      default:
+        jj_la1[3] = jj_gen;
+        break label_3;
+      }
+      jj_consume_token(COMMA);
+      id = jj_consume_token(NAME);
+      jj_consume_token(OPAREN);
+      expr();
+      jj_consume_token(CPAREN);
+output("DIM_ARR(\"%s\")", id.image);
+    }
+}
+
   final public void printStmt() throws ParseException {
     jj_consume_token(PRINT);
     expr();
@@ -235,19 +266,33 @@ output("PRINT()");
 }
 
   final public void letStmt() throws ParseException {Token id;
+    boolean isArray = false;
     switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
     case LET:{
       jj_consume_token(LET);
       break;
       }
     default:
-      jj_la1[3] = jj_gen;
+      jj_la1[4] = jj_gen;
       ;
     }
     id = jj_consume_token(NAME);
+    switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
+    case OPAREN:{
+      jj_consume_token(OPAREN);
+      expr();
+      jj_consume_token(CPAREN);
+isArray = true;
+      break;
+      }
+    default:
+      jj_la1[5] = jj_gen;
+      ;
+    }
     jj_consume_token(EQUAL);
     expr();
-output("STORE(\"%s\")", id.image);
+if (isArray) output("STORE_ARR(\"%s\")", id.image);
+        else         output("STORE(\"%s\")", id.image);
 }
 
   final public void whileStmt() throws ParseException {
@@ -310,7 +355,7 @@ output("JUMP(if_%d_end)", id);
       break;
       }
     default:
-      jj_la1[4] = jj_gen;
+      jj_la1[6] = jj_gen;
       ;
     }
 label("if_%d_end", id);
@@ -334,12 +379,13 @@ emitGoto(n.image);
     case IF:
     case FOR:
     case NEXT:
+    case DIM:
     case NAME:{
       stmt();
       break;
       }
     default:
-      jj_la1[5] = jj_gen;
+      jj_la1[7] = jj_gen;
       jj_consume_token(-1);
       throw new ParseException();
     }
@@ -368,7 +414,7 @@ output("STORE(\"%s\")", stepv);
       break;
       }
     default:
-      jj_la1[6] = jj_gen;
+      jj_la1[8] = jj_gen;
 output("LOAD_CONST(1)"); output("STORE(\"%s\")", stepv);
     }
 forStack.push(new ForItem(v, "for_" + id + "_top", "for_" + id + "_end", limv, stepv));
@@ -385,7 +431,7 @@ forStack.push(new ForItem(v, "for_" + id + "_top", "for_" + id + "_end", limv, s
       break;
       }
     default:
-      jj_la1[7] = jj_gen;
+      jj_la1[9] = jj_gen;
       ;
     }
 if (forStack.isEmpty()) {if (true) throw new ParseException("NEXT without FOR");}
@@ -403,7 +449,7 @@ void expr() throws ParseException {
 
   final public void orExpr() throws ParseException {
     andExpr();
-    label_3:
+    label_4:
     while (true) {
       switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
       case OR:{
@@ -411,8 +457,8 @@ void expr() throws ParseException {
         break;
         }
       default:
-        jj_la1[8] = jj_gen;
-        break label_3;
+        jj_la1[10] = jj_gen;
+        break label_4;
       }
       jj_consume_token(OR);
       andExpr();
@@ -422,7 +468,7 @@ output("LOGIC_OR()");
 
   final public void andExpr() throws ParseException {
     notExpr();
-    label_4:
+    label_5:
     while (true) {
       switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
       case AND:{
@@ -430,8 +476,8 @@ output("LOGIC_OR()");
         break;
         }
       default:
-        jj_la1[9] = jj_gen;
-        break label_4;
+        jj_la1[11] = jj_gen;
+        break label_5;
       }
       jj_consume_token(AND);
       notExpr();
@@ -460,7 +506,7 @@ output("LOGIC_NOT()");
       break;
       }
     default:
-      jj_la1[10] = jj_gen;
+      jj_la1[12] = jj_gen;
       jj_consume_token(-1);
       throw new ParseException();
     }
@@ -468,7 +514,7 @@ output("LOGIC_NOT()");
 
   final public void relExpr() throws ParseException {
     addExpr();
-    label_5:
+    label_6:
     while (true) {
       switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
       case EQUAL:
@@ -481,8 +527,8 @@ output("LOGIC_NOT()");
         break;
         }
       default:
-        jj_la1[11] = jj_gen;
-        break label_5;
+        jj_la1[13] = jj_gen;
+        break label_6;
       }
       switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
       case EQUAL:{
@@ -522,7 +568,7 @@ output("CMP_GE()");
         break;
         }
       default:
-        jj_la1[12] = jj_gen;
+        jj_la1[14] = jj_gen;
         jj_consume_token(-1);
         throw new ParseException();
       }
@@ -531,7 +577,7 @@ output("CMP_GE()");
 
   final public void addExpr() throws ParseException {
     term();
-    label_6:
+    label_7:
     while (true) {
       switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
       case PLUS:
@@ -540,8 +586,8 @@ output("CMP_GE()");
         break;
         }
       default:
-        jj_la1[13] = jj_gen;
-        break label_6;
+        jj_la1[15] = jj_gen;
+        break label_7;
       }
       switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
       case PLUS:{
@@ -557,7 +603,7 @@ output("SUB()");
         break;
         }
       default:
-        jj_la1[14] = jj_gen;
+        jj_la1[16] = jj_gen;
         jj_consume_token(-1);
         throw new ParseException();
       }
@@ -566,7 +612,7 @@ output("SUB()");
 
   final public void term() throws ParseException {
     fact();
-    label_7:
+    label_8:
     while (true) {
       switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
       case TIMES:
@@ -576,8 +622,8 @@ output("SUB()");
         break;
         }
       default:
-        jj_la1[15] = jj_gen;
-        break label_7;
+        jj_la1[17] = jj_gen;
+        break label_8;
       }
       switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
       case TIMES:{
@@ -599,7 +645,7 @@ output("MOD()");
         break;
         }
       default:
-        jj_la1[16] = jj_gen;
+        jj_la1[18] = jj_gen;
         jj_consume_token(-1);
         throw new ParseException();
       }
@@ -647,7 +693,24 @@ output("LOAD_CONST(%d)", Long.parseLong(t.image.substring(2), 16));
       }
     case NAME:{
       t = jj_consume_token(NAME);
+      switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
+      case OPAREN:{
+        jj_consume_token(OPAREN);
+        expr();
+        jj_consume_token(CPAREN);
+String fn = t.image.toUpperCase();
+              if      (fn.equals("SIN"))   output("SIN()");
+              else if (fn.equals("COS"))   output("COS()");
+              else if (fn.equals("CEIL"))  output("CEIL()");    /* round up   */
+              else if (fn.equals("FLOOR")) output("FLOOR()");   /* round down */
+              else if (fn.equals("INT"))   output("FLOOR()");   /* GW-BASIC INT = floor */
+              else                         output("LOAD_ARR(\"%s\")", t.image);
+        break;
+        }
+      default:
+        jj_la1[19] = jj_gen;
 output("LOAD_VAR(\"%s\")", t.image);
+      }
       break;
       }
     case STRING:{
@@ -656,7 +719,7 @@ output("LOAD_STR(%s)", t.image);
       break;
       }
     default:
-      jj_la1[17] = jj_gen;
+      jj_la1[20] = jj_gen;
       jj_consume_token(-1);
       throw new ParseException();
     }
@@ -671,7 +734,7 @@ output("LOAD_STR(%s)", t.image);
   public Token jj_nt;
   private int jj_ntk;
   private int jj_gen;
-  final private int[] jj_la1 = new int[18];
+  final private int[] jj_la1 = new int[21];
   static private int[] jj_la1_0;
   static private int[] jj_la1_1;
   static {
@@ -679,10 +742,10 @@ output("LOAD_STR(%s)", t.image);
 	   jj_la1_init_1();
 	}
 	private static void jj_la1_init_0() {
-	   jj_la1_0 = new int[] {0x0,0x4000,0x127f8000,0x10000,0x1000000,0x127f8000,0x8000000,0x0,0x40000000,0x20000000,0x8000001a,0x3f00,0x3f00,0x18,0x18,0xe0,0xe0,0x1a,};
+	   jj_la1_0 = new int[] {0x0,0x4000,0x64ff0000,0x8000,0x20000,0x2,0x2000000,0x64ff0000,0x10000000,0x0,0x0,0x80000000,0x1a,0x3f00,0x3f00,0x18,0x18,0xe0,0xe0,0x2,0x1a,};
 	}
 	private static void jj_la1_init_1() {
-	   jj_la1_1 = new int[] {0x2,0x0,0x20,0x0,0x0,0x22,0x0,0x20,0x0,0x0,0x3f,0x0,0x0,0x0,0x0,0x0,0x0,0x3f,};
+	   jj_la1_1 = new int[] {0x8,0x0,0x80,0x0,0x0,0x0,0x0,0x88,0x0,0x80,0x1,0x0,0xfe,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0xfc,};
 	}
 
   /** Constructor with InputStream. */
@@ -696,7 +759,7 @@ output("LOAD_STR(%s)", t.image);
 	 token = new Token();
 	 jj_ntk = -1;
 	 jj_gen = 0;
-	 for (int i = 0; i < 18; i++) jj_la1[i] = -1;
+	 for (int i = 0; i < 21; i++) jj_la1[i] = -1;
   }
 
   /** Reinitialise. */
@@ -710,7 +773,7 @@ output("LOAD_STR(%s)", t.image);
 	 token = new Token();
 	 jj_ntk = -1;
 	 jj_gen = 0;
-	 for (int i = 0; i < 18; i++) jj_la1[i] = -1;
+	 for (int i = 0; i < 21; i++) jj_la1[i] = -1;
   }
 
   /** Constructor. */
@@ -720,7 +783,7 @@ output("LOAD_STR(%s)", t.image);
 	 token = new Token();
 	 jj_ntk = -1;
 	 jj_gen = 0;
-	 for (int i = 0; i < 18; i++) jj_la1[i] = -1;
+	 for (int i = 0; i < 21; i++) jj_la1[i] = -1;
   }
 
   /** Reinitialise. */
@@ -738,7 +801,7 @@ output("LOAD_STR(%s)", t.image);
 	 token = new Token();
 	 jj_ntk = -1;
 	 jj_gen = 0;
-	 for (int i = 0; i < 18; i++) jj_la1[i] = -1;
+	 for (int i = 0; i < 21; i++) jj_la1[i] = -1;
   }
 
   /** Constructor with generated Token Manager. */
@@ -747,7 +810,7 @@ output("LOAD_STR(%s)", t.image);
 	 token = new Token();
 	 jj_ntk = -1;
 	 jj_gen = 0;
-	 for (int i = 0; i < 18; i++) jj_la1[i] = -1;
+	 for (int i = 0; i < 21; i++) jj_la1[i] = -1;
   }
 
   /** Reinitialise. */
@@ -756,7 +819,7 @@ output("LOAD_STR(%s)", t.image);
 	 token = new Token();
 	 jj_ntk = -1;
 	 jj_gen = 0;
-	 for (int i = 0; i < 18; i++) jj_la1[i] = -1;
+	 for (int i = 0; i < 21; i++) jj_la1[i] = -1;
   }
 
   private Token jj_consume_token(int kind) throws ParseException {
@@ -807,12 +870,12 @@ output("LOAD_STR(%s)", t.image);
   /** Generate ParseException. */
   public ParseException generateParseException() {
 	 jj_expentries.clear();
-	 boolean[] la1tokens = new boolean[41];
+	 boolean[] la1tokens = new boolean[43];
 	 if (jj_kind >= 0) {
 	   la1tokens[jj_kind] = true;
 	   jj_kind = -1;
 	 }
-	 for (int i = 0; i < 18; i++) {
+	 for (int i = 0; i < 21; i++) {
 	   if (jj_la1[i] == jj_gen) {
 		 for (int j = 0; j < 32; j++) {
 		   if ((jj_la1_0[i] & (1<<j)) != 0) {
@@ -824,7 +887,7 @@ output("LOAD_STR(%s)", t.image);
 		 }
 	   }
 	 }
-	 for (int i = 0; i < 41; i++) {
+	 for (int i = 0; i < 43; i++) {
 	   if (la1tokens[i]) {
 		 jj_expentry = new int[1];
 		 jj_expentry[0] = i;
