@@ -189,6 +189,55 @@ stack trace — it only ever rejects bad BASIC input.
 
 ---
 
+## 12a. Requirement-by-requirement classification
+
+**R1 — transpiler fails only on bad BASIC source; clear message; failed code kept as
+non‑`.c`.**
+`main()` wraps the whole parse in `try/catch` (`ParseException`, `TokenMgrError`, any
+`Throwable`) and captures generated C into a buffer first.
+→ success writes `target/<name>.c`; a BASIC error prints `ERROR in BASIC source: <msg>` and
+writes `target/<name>.c.error` (extension is `.error`, **not** `.c`), then exits non‑zero.
+A missing input file is reported cleanly. The transpiler never dies with a stack trace.
+
+**R2 — successful output always compiles.**
+The only thing that could break the C compile — a jump to a line that does not exist — is
+caught at transpile time and emitted as `bad_line_number(n)` (a runtime call) instead of a
+dangling `goto`. Intentional unused per‑line labels are silenced with one
+`#pragma GCC diagnostic ignored "-Wunused-label"`.
+→ all six valid samples compile under `gcc -Wall -lm` with **zero** warnings/errors.
+
+**R3 — compiled program never crashes; clean termination is allowed.**
+Every hazard warns and continues: unassigned variable, wrong type, bad jump,
+division/modulo by zero, out‑of‑range index, `RETURN` without `GOSUB`. Unrecoverable states
+(stack overflow, variable/array limits, out of memory, negative `DIM`) `exit(1)` **with a
+clear message**.
+
+**R4 — self‑defined rules, applied consistently.**
+
+| Rule | Our decision |
+|------|--------------|
+| (a) Number of variables | 256 scalars + 64 arrays; overflow = clean termination |
+| (b) Variable‑name length | first **63** chars significant (≥ 8); longer names **cut off**, not a syntax error |
+| (c) Undeclared variable read first | **interpolated** → `0` (numeric) or `""` (`name$`), with a runtime warning |
+| (d) Other rules | operand stack 1024; GOSUB depth 256; numbers are `double` (`/` real, `%` remainder); arrays `0..n` with auto‑`DIM(10)`; truth `-1`/`0` |
+
+---
+
+## 12b. Classification of extra functionality
+
+The baseline sample had only `PRINT`, `LET`, `WHILE`/`WEND`, integer constants and
+`+ - * / %`, with an **incomplete** runtime. Everything below was added by us.
+
+| Category | Added on top of the sample |
+|----------|----------------------------|
+| **Control flow** | `GOTO` (validated), `GOSUB`/`RETURN` (return‑id + dispatcher), `IF…THEN/ELSE` (line or statement), `FOR/TO/STEP/NEXT` |
+| **Data & types** | 1D arrays (`DIM`, `A(i)` load/store, bounds + auto‑DIM), `name$` strings, string concatenation, tagged runtime values with type checking |
+| **Operators & literals** | relational `= <> < > <= >=`, logical `AND OR NOT`, unary `-`, floats, `&H`/`&O` hex/octal |
+| **Functions** | `SIN`, `COS`, `CEIL` (round up), `FLOOR` (round down), `INT` (floor) |
+| **Engineering / correctness** | numeric line‑ordering pass (§2.5), multiple statements per line (`:`), optional `LET`, full success/error output scheme, complete crash‑safe C runtime |
+
+---
+
 ## 13. Demo — sample programs
 
 | File | Demonstrates | Output |
