@@ -44,7 +44,7 @@ Example — the line `30 PRINT A` becomes:
 
 ## 2. Building the transpiler
 
-Requirements: **JDK 17+** (the grammar uses `record`s; the POM targets 24) and **Maven**.
+Requirements: **JDK 11+** and **Maven** (the POM targets Java 11).
 The `javacc-maven-plugin` turns `src/main/javacc/GWBasic.jj` into Java parser sources
 automatically during `compile`.
 
@@ -62,24 +62,26 @@ folder as a Maven project and run the Maven `compile` goal.
 ## 3. Running it (transpiling a `.bas` file)
 
 After `mvn compile`, the main class is `de.hft_stuttgart.cpl.GWBasic`. Pass the `.bas`
-file as the only argument; the C source is written to *stdout*:
+file as the only argument. The transpiler **writes the generated C into the `target/`
+directory** and prints a one‑line status to *stderr*:
+
+* on success it writes `target/<name>.c`;
+* on a BASIC source error it prints a clear message and writes the partial output to
+  `target/<name>.c.error` (note: **not** a `.c` file), and exits with a non‑zero code.
 
 ```bash
-# 1) GW-BASIC  ->  C
-java -cp target/classes de.hft_stuttgart.cpl.GWBasic TEST.BAS > program.c
+# 1) GW-BASIC -> C     (creates target/TEST.c on success)
+java -cp target/classes de.hft_stuttgart.cpl.GWBasic TEST.BAS
 
-# 2) C  ->  executable   (plain gcc; no -lm needed)
-gcc -Wall -o program program.c -lm
+# 2) C -> executable   (link the math library with -lm)
+gcc -Wall -o program target/TEST.c -lm
 
 # 3) run it
 ./program
 ```
 
-If you give no argument it reads from *stdin*, so this also works:
-
-```bash
-java -cp target/classes de.hft_stuttgart.cpl.GWBasic < TEST.BAS | gcc -xc -o program - -lm && ./program
-```
+So after transpiling, `target/` contains a `.c` file only if transpilation succeeded; a
+`*.c.error` file means the BASIC source was rejected (see the printed message for why).
 
 In **CLion** you typically transpile with the command above, then open the resulting
 `program.c` in a CLion C project and build/run it there.
@@ -209,8 +211,61 @@ known names `SIN COS CEIL FLOOR INT` as functions and everything else as an arra
 | `TEST4_FOR.BAS` | `FOR`, `FOR…STEP -2`, string `PRINT` | `1 2 3 4 5 10 8 6 4 2 DONE` |
 | `TEST5_WARNINGS.BAS` | unassigned var + undefined jump warnings | `0` / `hello world` / `42` (+ warnings on stderr) |
 | `TEST6_ARRAY_MATH.BAS` | `DIM`/array, `CEIL`/`FLOOR`/`INT`, `SIN`/`COS` | `0 1 4 9 16 25` then `3 2 -2 0 1` |
+| `TEST7_BAD_SOURCE.BAS` | a **deliberate** error (`WEND` without `WHILE`) | *(no `.c`; writes `target/TEST7_BAD_SOURCE.c.error` + a clear message)* |
 
-All six transpile to C that compiles cleanly under `gcc -Wall -lm` with no warnings.
+Programs 1–6 transpile to C that compiles cleanly under `gcc -Wall -lm` with no warnings.
+Program 7 demonstrates the error path: the transpiler prints `ERROR in BASIC source: WEND
+without WHILE` and produces a `.c.error` file instead of a `.c`.
+
+---
+
+## 8a. Self‑imposed rules and limits
+
+The assignment lets us define our own reasonable limits as long as they are applied
+consistently. The ones this project uses:
+
+* **Number of variables:** up to **256** scalar variables and **64** arrays. Exceeding the
+  limit is a clean runtime termination with a message (not a crash).
+* **Variable‑name length:** the first **63** characters are significant; longer names are
+  **cut off** (not a syntax error). Names follow GW‑BASIC form — start with a letter, then
+  letters/digits, optional trailing `$` for strings.
+* **Undeclared variables read before assignment:** **interpolated** — a numeric variable
+  defaults to `0`, a `name$` to `""`, each with a runtime warning. (We chose interpolation
+  rather than treating it as an error.)
+* **Operand stack depth 1024, GOSUB nesting 256** — generous; overflow terminates cleanly
+  with a message.
+* **Array indices** run `0..n`; out‑of‑range access warns and is ignored (reads give `0`).
+  An array used before `DIM` defaults to `0..10` with a warning.
+* **Numbers** are represented as C `double`; `/` is real division and `%` is the remainder.
+* **Comparisons** yield GW‑BASIC truth values: `-1` true, `0` false.
+
+---
+
+## 8b. How this meets the three evaluation requirements
+
+**(1) The transpiler never fails except on BASIC‑source errors, and flags those clearly.**
+`main()` wraps the whole parse in a `try/catch` (covering `ParseException`, JavaCC's
+`TokenMgrError`, and any other `Throwable`). The generated C is first captured into a memory
+buffer. On success it is written to `target/<name>.c`; on a BASIC‑source error the
+transpiler prints `ERROR in BASIC source: …`, writes the partial output to
+`target/<name>.c.error` (an extension that is deliberately **not** `.c`, so a failed
+transpilation is obvious), and exits non‑zero. The transpiler never terminates with a Java
+stack trace.
+
+**(2) On success, the produced C always compiles.** The only constructs that could
+otherwise produce a C‑compiler error are jumps to non‑existent line numbers — these are
+detected during transpilation (the set of existing line numbers is known) and emitted as a
+`bad_line_number(n)` runtime call instead of a dangling `goto`. Per‑line labels that are
+never targeted are intentional, so the runtime disables just that cosmetic warning. All
+seven samples that transpile successfully compile under `gcc -Wall -lm` with **zero**
+warnings.
+
+**(3) The compiled program never crashes.** Every runtime hazard is handled: type
+mismatches, unassigned variables, undefined jumps, division/modulo by zero, and
+out‑of‑range array indices all emit a `RUNTIME WARNING` and continue. Genuinely
+unrecoverable conditions (operand‑stack overflow, exceeding the variable/array limits, out
+of memory) call `exit(1)` **with a clear termination message** — which the requirements
+explicitly allow.
 
 ---
 
