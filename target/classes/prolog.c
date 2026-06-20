@@ -29,6 +29,19 @@ typedef struct { VType type; double num; char *str; } Value;
 static Value make_num(double d) { Value v; v.type = T_NUM; v.num = d;  v.str = NULL; return v; }
 static Value make_str(char *s)  { Value v; v.type = T_STR; v.num = 0;  v.str = s;    return v; }
 
+/* allocation that terminates cleanly (with a message) instead of crashing on NULL */
+static void *xmalloc(size_t n) {
+    void *p = malloc(n);
+    if (!p) { fprintf(stderr, "RUNTIME ERROR: out of memory; terminating\n"); exit(1); }
+    return p;
+}
+static char *dupstr(const char *s) {
+    size_t n = strlen(s) + 1;
+    char *p = (char *)xmalloc(n);
+    memcpy(p, s, n);
+    return p;
+}
+
 /* ---------- Operand stack ---------- */
 #define STACK_MAX 1024
 static Value vstack[STACK_MAX];
@@ -75,7 +88,7 @@ static VarSlot *var_intern(const char *name) {
     strncpy(s->name, name, sizeof(s->name) - 1);
     s->name[sizeof(s->name) - 1] = '\0';
     s->assigned = 0;
-    s->val = is_string_var(name) ? make_str(strdup("")) : make_num(0);
+    s->val = is_string_var(name) ? make_str(dupstr("")) : make_num(0);
     return s;
 }
 
@@ -90,7 +103,7 @@ void LOAD_STR(const char *literal) {            /* literal still carries its sur
         memcpy(s, literal + 1, n - 2);
         s[n - 2] = '\0';
     } else {
-        s = strdup(literal);
+        s = dupstr(literal);
     }
     stack_push(make_str(s));
 }
@@ -100,7 +113,7 @@ void LOAD_VAR(const char *name) {
     if (!s || !s->assigned) {                   /* unassigned variable -> warn, use default */
         fprintf(stderr, "RUNTIME WARNING: variable '%s' used before assignment; using %s\n",
                 name, is_string_var(name) ? "\"\"" : "0");
-        stack_push(is_string_var(name) ? make_str(strdup("")) : make_num(0));
+        stack_push(is_string_var(name) ? make_str(dupstr("")) : make_num(0));
         return;
     }
     stack_push(s->val);
@@ -129,10 +142,14 @@ static ArrSlot *arr_find(const char *name) {
     return NULL;
 }
 static void arr_alloc(ArrSlot *a, const char *name, long upper) {
-    a->size = upper + 1;                       /* GW-BASIC arrays run 0..upper */
-    a->data = (Value *)malloc(sizeof(Value) * a->size);
+    if (upper < 0) {                           /* defensive: never allocate a negative size */
+        fprintf(stderr, "RUNTIME WARNING: DIM with negative bound for '%s'; using 0\n", name);
+        upper = 0;
+    }
+    a->size = upper + 1;                        /* GW-BASIC arrays run 0..upper */
+    a->data = (Value *)xmalloc(sizeof(Value) * (size_t)a->size);
     for (long i = 0; i < a->size; i++)
-        a->data[i] = is_string_var(name) ? make_str(strdup("")) : make_num(0);
+        a->data[i] = is_string_var(name) ? make_str(dupstr("")) : make_num(0);
 }
 /* used when an array is referenced without a DIM: GW-BASIC defaults to 0..10 */
 static ArrSlot *arr_need(const char *name) {
