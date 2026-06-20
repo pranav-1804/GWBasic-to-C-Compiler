@@ -1,0 +1,2 @@
+10 PRINT 5
+20 WEND
