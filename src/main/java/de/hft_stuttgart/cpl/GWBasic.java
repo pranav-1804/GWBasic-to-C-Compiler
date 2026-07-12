@@ -4,10 +4,15 @@ package de.hft_stuttgart.cpl;
 
 import java.io.InputStream;
 import java.io.IOException;
+import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.FileNotFoundException;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import java.util.HashSet;
@@ -34,6 +39,11 @@ public class GWBasic implements GWBasicConstants {
     int               forCounter   = 0;                 // unique id for FOR loops
     String            currentLine;
 
+    /* self-imposed rule: a variable/array name may be at most this many
+     * characters (a trailing '$' on a string name counts). A longer name is
+     * rejected as a BASIC source error - it is NOT silently cut off. */
+    static final int  MAX_NAME_LEN = 20;
+
     /* ============================================================
      *  main():
      *    1. read the whole .bas file
@@ -41,39 +51,95 @@ public class GWBasic implements GWBasicConstants {
      *       (GW-BASIC Manual section 2.5 - line numbers define the
      *        order in which statements are stored / executed)
      *    3. remember which line numbers exist (for GOTO/GOSUB checks)
-     *    4. feed the re-ordered source to the generated parser
+     *    4. feed the re-ordered source to the generated parser, capturing
+     *       the generated C in a buffer
+     *    5. on success, write  target/<name>.c
+     *       on a BASIC source error, print a clear message and write the
+     *       partial output to  target/<name>.c.error  (NOT a .c file, so a
+     *       failed transpilation is easy to recognise).  The transpiler
+     *       itself never throws - it only ever fails on bad BASIC input.
      * ============================================================ */
-    public static void main(String[] args) throws Exception {
-        InputStream raw = (args.length == 0) ? System.in : new FileInputStream(args[0]);
-
-        BufferedReader br = new BufferedReader(new InputStreamReader(raw, StandardCharsets.UTF_8));
-        TreeMap<Integer, String> program = new TreeMap<>();   // TreeMap -> ascending line order
-        String ln;
-        while ((ln = br.readLine()) != null) {
-            String t = ln.trim();
-            if (t.isEmpty()) continue;
-            int sp = 0;
-            while (sp < t.length() && Character.isDigit(t.charAt(sp))) sp++;
-            if (sp == 0) {
-                System.err.printf("WARNING: line without a line number ignored: %s%n", t);
-                continue;
-            }
-            int num = Integer.parseInt(t.substring(0, sp));
-            if (program.containsKey(num))
-                System.err.printf("WARNING: duplicate line number %d; later definition wins%n", num);
-            program.put(num, t);
-        }
-
-        StringBuilder sorted = new StringBuilder();
-        for (var e : program.entrySet()) sorted.append(e.getValue()).append('\n');
-
-        GWBasic parser = new GWBasic(
-            new ByteArrayInputStream(sorted.toString().getBytes(StandardCharsets.UTF_8)));
-        parser.definedLines = new HashSet<>(program.keySet());
+    public static void main(String[] args) {
+        String base = "out";
         try {
-            parser.parse();
-        } catch (ParseException pe) {
-            System.err.println(pe.getMessage());
+            if (args.length > 0) {
+                String n = new File(args[0]).getName();
+                base = n.contains(".") ? n.substring(0, n.lastIndexOf('.')) : n;
+            }
+
+            InputStream raw;
+            try {
+                raw = (args.length == 0) ? System.in : new FileInputStream(args[0]);
+            } catch (FileNotFoundException fnf) {
+                System.err.println("ERROR: cannot open input file '" + args[0] + "'");
+                System.exit(2);
+                return;
+            }
+
+            BufferedReader br = new BufferedReader(new InputStreamReader(raw, StandardCharsets.UTF_8));
+            TreeMap<Integer, String> program = new TreeMap<>();   // TreeMap -> ascending line order
+            String ln;
+            while ((ln = br.readLine()) != null) {
+                String t = ln.trim();
+                if (t.isEmpty()) continue;
+                int sp = 0;
+                while (sp < t.length() && Character.isDigit(t.charAt(sp))) sp++;
+                if (sp == 0) {
+                    System.err.printf("WARNING: line without a line number ignored: %s%n", t);
+                    continue;
+                }
+                int num = Integer.parseInt(t.substring(0, sp));
+                if (program.containsKey(num))
+                    System.err.printf("WARNING: duplicate line number %d; later definition wins%n", num);
+                program.put(num, t);
+            }
+
+            StringBuilder sorted = new StringBuilder();
+            for (var e : program.entrySet()) sorted.append(e.getValue()).append('\n');
+
+            GWBasic parser = new GWBasic(
+                new ByteArrayInputStream(sorted.toString().getBytes(StandardCharsets.UTF_8)));
+            parser.definedLines = new HashSet<>(program.keySet());
+
+            /* capture all generated code so we can choose the file name afterwards */
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            PrintStream realOut = System.out;
+            PrintStream capture = new PrintStream(buffer, true, "UTF-8");
+            boolean ok = true;
+            String errMsg = null;
+            System.setOut(capture);
+            try {
+                parser.parse();
+            } catch (ParseException pe) {
+                ok = false; errMsg = pe.getMessage();
+            } catch (TokenMgrError te) {            /* JavaCC lexical error */
+                ok = false; errMsg = te.getMessage();
+            } catch (Throwable th) {                /* malformed program (e.g. NEXT without FOR) */
+                ok = false; errMsg = (th.getMessage() != null) ? th.getMessage() : th.toString();
+            } finally {
+                System.out.flush();
+                System.setOut(realOut);
+            }
+
+            File dir = new File("target");
+            dir.mkdirs();
+            if (ok) {
+                File out = new File(dir, base + ".c");
+                try (FileOutputStream fos = new FileOutputStream(out)) { fos.write(buffer.toByteArray()); }
+                System.err.println("OK: transpiled successfully -> " + out.getPath());
+            } else {
+                File out = new File(dir, base + ".c.error");   /* extension is .error, not .c */
+                try (FileOutputStream fos = new FileOutputStream(out)) { fos.write(buffer.toByteArray()); }
+                System.err.println("ERROR in BASIC source: " + errMsg);
+                System.err.println("Incomplete code written to " + out.getPath()
+                                   + "  (extension is not .c -> transpilation did NOT succeed)");
+                System.exit(1);
+            }
+        } catch (Exception ex) {
+            /* should not happen for valid input; report cleanly instead of crashing */
+            System.err.println("ERROR while transpiling: "
+                               + (ex.getMessage() != null ? ex.getMessage() : ex.toString()));
+            System.exit(2);
         }
     }
 
@@ -95,6 +161,12 @@ public class GWBasic implements GWBasicConstants {
             output("JUMP(label_%s_init)", lineImage);
         else
             output("bad_line_number(%s)", lineImage);
+    }
+    /* enforce the maximum variable-name length; too long -> BASIC source error */
+    public void checkName(String name) throws ParseException {
+        if (name.length() > MAX_NAME_LEN)
+            throw new ParseException("variable name '" + name + "' is too long: "
+                + name.length() + " characters (the maximum allowed is " + MAX_NAME_LEN + ")");
     }
 
 /* ===================== GRAMMAR ===================== */
@@ -235,6 +307,7 @@ label("label_%s_fini", number.image);
   final public void dimStmt() throws ParseException {Token id;
     jj_consume_token(DIM);
     id = jj_consume_token(NAME);
+checkName(id.image);
     jj_consume_token(OPAREN);
     expr();
     jj_consume_token(CPAREN);
@@ -252,6 +325,7 @@ output("DIM_ARR(\"%s\")", id.image);
       }
       jj_consume_token(COMMA);
       id = jj_consume_token(NAME);
+checkName(id.image);
       jj_consume_token(OPAREN);
       expr();
       jj_consume_token(CPAREN);
@@ -259,10 +333,58 @@ output("DIM_ARR(\"%s\")", id.image);
     }
 }
 
-  final public void printStmt() throws ParseException {
+  final public void printStmt() throws ParseException {int n = 0;   /* argument count - determined by the parser and passed to PRINT */
+
     jj_consume_token(PRINT);
-    expr();
-output("PRINT()");
+    switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
+    case OPAREN:
+    case PLUS:
+    case MINUS:
+    case NOT:
+    case FLOAT_NUMBER:
+    case DEC_NUMBER:
+    case HEX_NUMBER:
+    case OCT_NUMBER:
+    case STRING:
+    case NAME:{
+      expr();
+n++;
+      label_4:
+      while (true) {
+        switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
+        case COMMA:
+        case SEMI:{
+          ;
+          break;
+          }
+        default:
+          jj_la1[4] = jj_gen;
+          break label_4;
+        }
+        switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
+        case COMMA:{
+          jj_consume_token(COMMA);
+          break;
+          }
+        case SEMI:{
+          jj_consume_token(SEMI);
+          break;
+          }
+        default:
+          jj_la1[5] = jj_gen;
+          jj_consume_token(-1);
+          throw new ParseException();
+        }
+        expr();
+n++;
+      }
+      break;
+      }
+    default:
+      jj_la1[6] = jj_gen;
+      ;
+    }
+output("PRINT(%d)", n);
 }
 
   final public void letStmt() throws ParseException {Token id;
@@ -273,10 +395,11 @@ output("PRINT()");
       break;
       }
     default:
-      jj_la1[4] = jj_gen;
+      jj_la1[7] = jj_gen;
       ;
     }
     id = jj_consume_token(NAME);
+checkName(id.image);
     switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
     case OPAREN:{
       jj_consume_token(OPAREN);
@@ -286,7 +409,7 @@ isArray = true;
       break;
       }
     default:
-      jj_la1[5] = jj_gen;
+      jj_la1[8] = jj_gen;
       ;
     }
     jj_consume_token(EQUAL);
@@ -355,7 +478,7 @@ output("JUMP(if_%d_end)", id);
       break;
       }
     default:
-      jj_la1[6] = jj_gen;
+      jj_la1[9] = jj_gen;
       ;
     }
 label("if_%d_end", id);
@@ -385,7 +508,7 @@ emitGoto(n.image);
       break;
       }
     default:
-      jj_la1[7] = jj_gen;
+      jj_la1[10] = jj_gen;
       jj_consume_token(-1);
       throw new ParseException();
     }
@@ -396,7 +519,8 @@ emitGoto(n.image);
     String v, limv, stepv;
     jj_consume_token(FOR);
     var = jj_consume_token(NAME);
-id    = ++forCounter;
+checkName(var.image);
+        id    = ++forCounter;
         v     = var.image;
         limv  = "__lim_"  + id;
         stepv = "__step_" + id;
@@ -414,7 +538,7 @@ output("STORE(\"%s\")", stepv);
       break;
       }
     default:
-      jj_la1[8] = jj_gen;
+      jj_la1[11] = jj_gen;
 output("LOAD_CONST(1)"); output("STORE(\"%s\")", stepv);
     }
 forStack.push(new ForItem(v, "for_" + id + "_top", "for_" + id + "_end", limv, stepv));
@@ -423,19 +547,24 @@ forStack.push(new ForItem(v, "for_" + id + "_top", "for_" + id + "_end", limv, s
         output("JUMP_IF_FALSE(for_%d_end)", id);
 }
 
-  final public void nextStmt() throws ParseException {
+  final public void nextStmt() throws ParseException {Token v = null;
     jj_consume_token(NEXT);
     switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
     case NAME:{
-      jj_consume_token(NAME);
+      v = jj_consume_token(NAME);
       break;
       }
     default:
-      jj_la1[9] = jj_gen;
+      jj_la1[12] = jj_gen;
       ;
     }
 if (forStack.isEmpty()) {if (true) throw new ParseException("NEXT without FOR");}
         ForItem f = forStack.pop();
+        /* if NEXT names a variable, it must match the FOR it closes -> catches
+         * mismatched / improperly nested loops (e.g. FOR I ... NEXT J). */
+        if (v != null && !v.image.equals(f.var()))
+            {if (true) throw new ParseException("NEXT " + v.image
+                + " does not match the open FOR " + f.var());}
         output("STEP_VAR(\"%s\",\"%s\")", f.var(), f.stepVar());
         output("JUMP(%s)", f.topLabel());
         label(f.endLabel());
@@ -449,7 +578,7 @@ void expr() throws ParseException {
 
   final public void orExpr() throws ParseException {
     andExpr();
-    label_4:
+    label_5:
     while (true) {
       switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
       case OR:{
@@ -457,8 +586,8 @@ void expr() throws ParseException {
         break;
         }
       default:
-        jj_la1[10] = jj_gen;
-        break label_4;
+        jj_la1[13] = jj_gen;
+        break label_5;
       }
       jj_consume_token(OR);
       andExpr();
@@ -468,7 +597,7 @@ output("LOGIC_OR()");
 
   final public void andExpr() throws ParseException {
     notExpr();
-    label_5:
+    label_6:
     while (true) {
       switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
       case AND:{
@@ -476,8 +605,8 @@ output("LOGIC_OR()");
         break;
         }
       default:
-        jj_la1[11] = jj_gen;
-        break label_5;
+        jj_la1[14] = jj_gen;
+        break label_6;
       }
       jj_consume_token(AND);
       notExpr();
@@ -506,7 +635,7 @@ output("LOGIC_NOT()");
       break;
       }
     default:
-      jj_la1[12] = jj_gen;
+      jj_la1[15] = jj_gen;
       jj_consume_token(-1);
       throw new ParseException();
     }
@@ -514,7 +643,7 @@ output("LOGIC_NOT()");
 
   final public void relExpr() throws ParseException {
     addExpr();
-    label_6:
+    label_7:
     while (true) {
       switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
       case EQUAL:
@@ -527,8 +656,8 @@ output("LOGIC_NOT()");
         break;
         }
       default:
-        jj_la1[13] = jj_gen;
-        break label_6;
+        jj_la1[16] = jj_gen;
+        break label_7;
       }
       switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
       case EQUAL:{
@@ -568,7 +697,7 @@ output("CMP_GE()");
         break;
         }
       default:
-        jj_la1[14] = jj_gen;
+        jj_la1[17] = jj_gen;
         jj_consume_token(-1);
         throw new ParseException();
       }
@@ -577,7 +706,7 @@ output("CMP_GE()");
 
   final public void addExpr() throws ParseException {
     term();
-    label_7:
+    label_8:
     while (true) {
       switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
       case PLUS:
@@ -586,8 +715,8 @@ output("CMP_GE()");
         break;
         }
       default:
-        jj_la1[15] = jj_gen;
-        break label_7;
+        jj_la1[18] = jj_gen;
+        break label_8;
       }
       switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
       case PLUS:{
@@ -603,7 +732,7 @@ output("SUB()");
         break;
         }
       default:
-        jj_la1[16] = jj_gen;
+        jj_la1[19] = jj_gen;
         jj_consume_token(-1);
         throw new ParseException();
       }
@@ -612,7 +741,7 @@ output("SUB()");
 
   final public void term() throws ParseException {
     fact();
-    label_8:
+    label_9:
     while (true) {
       switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
       case TIMES:
@@ -622,8 +751,8 @@ output("SUB()");
         break;
         }
       default:
-        jj_la1[17] = jj_gen;
-        break label_8;
+        jj_la1[20] = jj_gen;
+        break label_9;
       }
       switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
       case TIMES:{
@@ -645,7 +774,7 @@ output("MOD()");
         break;
         }
       default:
-        jj_la1[18] = jj_gen;
+        jj_la1[21] = jj_gen;
         jj_consume_token(-1);
         throw new ParseException();
       }
@@ -693,6 +822,7 @@ output("LOAD_CONST(%d)", Long.parseLong(t.image.substring(2), 16));
       }
     case NAME:{
       t = jj_consume_token(NAME);
+checkName(t.image);
       switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
       case OPAREN:{
         jj_consume_token(OPAREN);
@@ -704,11 +834,13 @@ String fn = t.image.toUpperCase();
               else if (fn.equals("CEIL"))  output("CEIL()");    /* round up   */
               else if (fn.equals("FLOOR")) output("FLOOR()");   /* round down */
               else if (fn.equals("INT"))   output("FLOOR()");   /* GW-BASIC INT = floor */
+              else if (fn.equals("CHR$"))  output("CHR()");     /* code -> 1-char string */
+              else if (fn.equals("STR$"))  output("STR()");     /* number -> its string  */
               else                         output("LOAD_ARR(\"%s\")", t.image);
         break;
         }
       default:
-        jj_la1[19] = jj_gen;
+        jj_la1[22] = jj_gen;
 output("LOAD_VAR(\"%s\")", t.image);
       }
       break;
@@ -719,7 +851,7 @@ output("LOAD_STR(%s)", t.image);
       break;
       }
     default:
-      jj_la1[20] = jj_gen;
+      jj_la1[23] = jj_gen;
       jj_consume_token(-1);
       throw new ParseException();
     }
@@ -734,7 +866,7 @@ output("LOAD_STR(%s)", t.image);
   public Token jj_nt;
   private int jj_ntk;
   private int jj_gen;
-  final private int[] jj_la1 = new int[21];
+  final private int[] jj_la1 = new int[24];
   static private int[] jj_la1_0;
   static private int[] jj_la1_1;
   static {
@@ -742,10 +874,10 @@ output("LOAD_STR(%s)", t.image);
 	   jj_la1_init_1();
 	}
 	private static void jj_la1_init_0() {
-	   jj_la1_0 = new int[] {0x0,0x4000,0x64ff0000,0x8000,0x20000,0x2,0x2000000,0x64ff0000,0x10000000,0x0,0x0,0x80000000,0x1a,0x3f00,0x3f00,0x18,0x18,0xe0,0xe0,0x2,0x1a,};
+	   jj_la1_0 = new int[] {0x0,0x4000,0xc9fe0000,0x8000,0x18000,0x18000,0x1a,0x40000,0x2,0x4000000,0xc9fe0000,0x20000000,0x0,0x0,0x0,0x1a,0x3f00,0x3f00,0x18,0x18,0xe0,0xe0,0x2,0x1a,};
 	}
 	private static void jj_la1_init_1() {
-	   jj_la1_1 = new int[] {0x8,0x0,0x80,0x0,0x0,0x0,0x0,0x88,0x0,0x80,0x1,0x0,0xfe,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0xfc,};
+	   jj_la1_1 = new int[] {0x10,0x0,0x100,0x0,0x0,0x0,0x1fc,0x0,0x0,0x0,0x110,0x0,0x100,0x2,0x1,0x1fc,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x1f8,};
 	}
 
   /** Constructor with InputStream. */
@@ -759,7 +891,7 @@ output("LOAD_STR(%s)", t.image);
 	 token = new Token();
 	 jj_ntk = -1;
 	 jj_gen = 0;
-	 for (int i = 0; i < 21; i++) jj_la1[i] = -1;
+	 for (int i = 0; i < 24; i++) jj_la1[i] = -1;
   }
 
   /** Reinitialise. */
@@ -773,7 +905,7 @@ output("LOAD_STR(%s)", t.image);
 	 token = new Token();
 	 jj_ntk = -1;
 	 jj_gen = 0;
-	 for (int i = 0; i < 21; i++) jj_la1[i] = -1;
+	 for (int i = 0; i < 24; i++) jj_la1[i] = -1;
   }
 
   /** Constructor. */
@@ -783,7 +915,7 @@ output("LOAD_STR(%s)", t.image);
 	 token = new Token();
 	 jj_ntk = -1;
 	 jj_gen = 0;
-	 for (int i = 0; i < 21; i++) jj_la1[i] = -1;
+	 for (int i = 0; i < 24; i++) jj_la1[i] = -1;
   }
 
   /** Reinitialise. */
@@ -801,7 +933,7 @@ output("LOAD_STR(%s)", t.image);
 	 token = new Token();
 	 jj_ntk = -1;
 	 jj_gen = 0;
-	 for (int i = 0; i < 21; i++) jj_la1[i] = -1;
+	 for (int i = 0; i < 24; i++) jj_la1[i] = -1;
   }
 
   /** Constructor with generated Token Manager. */
@@ -810,7 +942,7 @@ output("LOAD_STR(%s)", t.image);
 	 token = new Token();
 	 jj_ntk = -1;
 	 jj_gen = 0;
-	 for (int i = 0; i < 21; i++) jj_la1[i] = -1;
+	 for (int i = 0; i < 24; i++) jj_la1[i] = -1;
   }
 
   /** Reinitialise. */
@@ -819,7 +951,7 @@ output("LOAD_STR(%s)", t.image);
 	 token = new Token();
 	 jj_ntk = -1;
 	 jj_gen = 0;
-	 for (int i = 0; i < 21; i++) jj_la1[i] = -1;
+	 for (int i = 0; i < 24; i++) jj_la1[i] = -1;
   }
 
   private Token jj_consume_token(int kind) throws ParseException {
@@ -870,12 +1002,12 @@ output("LOAD_STR(%s)", t.image);
   /** Generate ParseException. */
   public ParseException generateParseException() {
 	 jj_expentries.clear();
-	 boolean[] la1tokens = new boolean[43];
+	 boolean[] la1tokens = new boolean[44];
 	 if (jj_kind >= 0) {
 	   la1tokens[jj_kind] = true;
 	   jj_kind = -1;
 	 }
-	 for (int i = 0; i < 21; i++) {
+	 for (int i = 0; i < 24; i++) {
 	   if (jj_la1[i] == jj_gen) {
 		 for (int j = 0; j < 32; j++) {
 		   if ((jj_la1_0[i] & (1<<j)) != 0) {
@@ -887,7 +1019,7 @@ output("LOAD_STR(%s)", t.image);
 		 }
 	   }
 	 }
-	 for (int i = 0; i < 43; i++) {
+	 for (int i = 0; i < 44; i++) {
 	   if (la1tokens[i]) {
 		 jj_expentry = new int[1];
 		 jj_expentry[0] = i;

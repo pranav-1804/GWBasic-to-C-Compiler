@@ -41,55 +41,57 @@ public interface GWBasicConstants {
   /** RegularExpression Id. */
   int COMMA = 15;
   /** RegularExpression Id. */
-  int PRINT = 16;
+  int SEMI = 16;
   /** RegularExpression Id. */
-  int LET = 17;
+  int PRINT = 17;
   /** RegularExpression Id. */
-  int WHILE = 18;
+  int LET = 18;
   /** RegularExpression Id. */
-  int WEND = 19;
+  int WHILE = 19;
   /** RegularExpression Id. */
-  int GOTO = 20;
+  int WEND = 20;
   /** RegularExpression Id. */
-  int GOSUB = 21;
+  int GOTO = 21;
   /** RegularExpression Id. */
-  int RETURN = 22;
+  int GOSUB = 22;
   /** RegularExpression Id. */
-  int IF = 23;
+  int RETURN = 23;
   /** RegularExpression Id. */
-  int THEN = 24;
+  int IF = 24;
   /** RegularExpression Id. */
-  int ELSE = 25;
+  int THEN = 25;
   /** RegularExpression Id. */
-  int FOR = 26;
+  int ELSE = 26;
   /** RegularExpression Id. */
-  int TO = 27;
+  int FOR = 27;
   /** RegularExpression Id. */
-  int STEP = 28;
+  int TO = 28;
   /** RegularExpression Id. */
-  int NEXT = 29;
+  int STEP = 29;
   /** RegularExpression Id. */
-  int DIM = 30;
+  int NEXT = 30;
   /** RegularExpression Id. */
-  int AND = 31;
+  int DIM = 31;
   /** RegularExpression Id. */
-  int OR = 32;
+  int AND = 32;
   /** RegularExpression Id. */
-  int NOT = 33;
+  int OR = 33;
   /** RegularExpression Id. */
-  int FLOAT_NUMBER = 34;
+  int NOT = 34;
   /** RegularExpression Id. */
-  int DEC_NUMBER = 35;
+  int FLOAT_NUMBER = 35;
   /** RegularExpression Id. */
-  int HEX_NUMBER = 36;
+  int DEC_NUMBER = 36;
   /** RegularExpression Id. */
-  int OCT_NUMBER = 37;
+  int HEX_NUMBER = 37;
   /** RegularExpression Id. */
-  int STRING = 38;
+  int OCT_NUMBER = 38;
   /** RegularExpression Id. */
-  int NAME = 39;
+  int STRING = 39;
   /** RegularExpression Id. */
-  int EOL = 40;
+  int NAME = 40;
+  /** RegularExpression Id. */
+  int EOL = 41;
 
   /** Lexical state. */
   int DEFAULT = 0;
@@ -112,6 +114,7 @@ public interface GWBasicConstants {
     "\">\"",
     "\":\"",
     "\",\"",
+    "\";\"",
     "\"PRINT\"",
     "\"LET\"",
     "\"WHILE\"",

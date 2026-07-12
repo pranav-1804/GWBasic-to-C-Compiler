@@ -326,3 +326,35 @@ void bad_line_number(int n) {
 #define JUMP_IF_FALSE(label) if (!pop_truth()) goto label
 
 int main(void) {
+  label_10_init:
+    LOAD_STR("--- ARRAY OUT-OF-BOUNDS TRAP ---");
+    PRINT(1);
+  label_10_fini:
+  label_20_init:
+    LOAD_CONST(5);
+    DIM_ARR("A");
+  label_20_fini:
+  label_30_init:
+    LOAD_CONST(3);
+    LOAD_CONST(99);
+    STORE_ARR("A");
+  label_30_fini:
+  label_40_init:
+    LOAD_CONST(3);
+    LOAD_ARR("A");
+    PRINT(1);
+  label_40_fini:
+  label_50_init:
+    LOAD_CONST(10);
+    LOAD_CONST(1);
+    STORE_ARR("A");
+  label_50_fini:
+  label_60_init:
+    LOAD_STR("If you see this line, the array-bounds check FAILED!");
+    PRINT(1);
+  label_60_fini:
+    JUMP(__prog_end);
+  __prog_end: ;
+    return 0;
+}
+/* ===== end of generated GW-BASIC program ===== */

@@ -326,3 +326,115 @@ void bad_line_number(int n) {
 #define JUMP_IF_FALSE(label) if (!pop_truth()) goto label
 
 int main(void) {
+  label_10_init:
+    LOAD_STR("--- STARTING HAPPY PATH TEST ---");
+    PRINT(1);
+  label_10_fini:
+  label_20_init:
+    LOAD_CONST(5);
+    STORE("A");
+  label_20_fini:
+  label_30_init:
+    LOAD_CONST(10);
+    STORE("B");
+  label_30_fini:
+  label_40_init:
+    LOAD_VAR("A");
+    LOAD_VAR("B");
+    LOAD_CONST(2);
+    MUL();
+    ADD();
+    STORE("C");
+  label_40_fini:
+  label_50_init:
+    LOAD_STR("C should be 25:");
+    PRINT(1);
+  label_50_fini:
+  label_60_init:
+    LOAD_VAR("C");
+    PRINT(1);
+  label_60_fini:
+  label_70_init:
+    LOAD_CONST(1);
+    STORE("I");
+    LOAD_CONST(3);
+    STORE("__lim_1");
+    LOAD_CONST(1);
+    STORE("__step_1");
+  for_1_top:
+    FOR_CONTINUE("I","__lim_1","__step_1");
+    JUMP_IF_FALSE(for_1_end);
+  label_70_fini:
+  label_80_init:
+    LOAD_STR("Loop without step, I is:");
+    PRINT(1);
+  label_80_fini:
+  label_90_init:
+    LOAD_VAR("I");
+    PRINT(1);
+  label_90_fini:
+  label_100_init:
+    STEP_VAR("I","__step_1");
+    JUMP(for_1_top);
+  for_1_end:
+  label_100_fini:
+  label_110_init:
+    LOAD_CONST(10);
+    STORE("J");
+    LOAD_CONST(12);
+    STORE("__lim_2");
+    LOAD_CONST(1);
+    STORE("__step_2");
+  for_2_top:
+    FOR_CONTINUE("J","__lim_2","__step_2");
+    JUMP_IF_FALSE(for_2_end);
+  label_110_fini:
+  label_120_init:
+    LOAD_STR("Loop with explicit step, J is:");
+    PRINT(1);
+  label_120_fini:
+  label_130_init:
+    LOAD_VAR("J");
+    PRINT(1);
+  label_130_fini:
+  label_140_init:
+    STEP_VAR("J","__step_2");
+    JUMP(for_2_top);
+  for_2_end:
+  label_140_fini:
+  label_150_init:
+    LOAD_CONST(2);
+    STORE("W");
+  label_150_fini:
+  label_160_init:
+  while_160_start:
+    LOAD_VAR("W");
+    JUMP_IF_FALSE(while_160_end);
+  label_160_fini:
+  label_170_init:
+    LOAD_STR("While running, W is:");
+    PRINT(1);
+  label_170_fini:
+  label_180_init:
+    LOAD_VAR("W");
+    PRINT(1);
+  label_180_fini:
+  label_190_init:
+    LOAD_VAR("W");
+    LOAD_CONST(1);
+    SUB();
+    STORE("W");
+  label_190_fini:
+  label_200_init:
+    JUMP(while_160_start);
+  while_160_end:
+  label_200_fini:
+  label_210_init:
+    LOAD_STR("--- HAPPY PATH SUCCESS ---");
+    PRINT(1);
+  label_210_fini:
+    JUMP(__prog_end);
+  __prog_end: ;
+    return 0;
+}
+/* ===== end of generated GW-BASIC program ===== */

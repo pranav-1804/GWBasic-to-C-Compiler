@@ -326,3 +326,36 @@ void bad_line_number(int n) {
 #define JUMP_IF_FALSE(label) if (!pop_truth()) goto label
 
 int main(void) {
+  label_10_init:
+    LOAD_STR("--- TESTING UNASSIGNED VARIABLE TRAP ---");
+    PRINT(1);
+  label_10_fini:
+  label_20_init:
+    LOAD_CONST(50);
+    STORE("VALIDVAR");
+  label_20_fini:
+  label_30_init:
+    LOAD_VAR("VALIDVAR");
+    PRINT(1);
+  label_30_fini:
+  label_40_init:
+    LOAD_STR("The next line attempts to print MYSTERYVAR which was never set.");
+    PRINT(1);
+  label_40_fini:
+  label_50_init:
+    LOAD_STR("Your executable should print a Runtime Error and exit cleanly here:");
+    PRINT(1);
+  label_50_fini:
+  label_60_init:
+    LOAD_VAR("MYSTERYVAR");
+    PRINT(1);
+  label_60_fini:
+  label_70_init:
+    LOAD_STR("If you see this line, your runtime safety check FAILED!");
+    PRINT(1);
+  label_70_fini:
+    JUMP(__prog_end);
+  __prog_end: ;
+    return 0;
+}
+/* ===== end of generated GW-BASIC program ===== */

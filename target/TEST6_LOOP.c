@@ -326,3 +326,97 @@ void bad_line_number(int n) {
 #define JUMP_IF_FALSE(label) if (!pop_truth()) goto label
 
 int main(void) {
+  label_5_init:
+    LOAD_STR("=== STAGE 1: BASIC EXPRESSIONS & MATH ===");
+    PRINT(1);
+  label_5_fini:
+  label_10_init:
+    LOAD_CONST(10);
+    STORE("A");
+  label_10_fini:
+  label_20_init:
+    LOAD_CONST(3);
+    STORE("B");
+  label_20_fini:
+  label_30_init:
+    LOAD_VAR("A");
+    LOAD_VAR("B");
+    LOAD_CONST(2);
+    MUL();
+    ADD();
+    STORE("C");
+  label_30_fini:
+  label_40_init:
+    LOAD_STR("C should be 16: ");
+    PRINT(1);
+  label_40_fini:
+  label_50_init:
+    LOAD_VAR("C");
+    PRINT(1);
+  label_50_fini:
+  label_60_init:
+    LOAD_STR("=== STAGE 2: WHILE/WEND NESTING ===");
+    PRINT(1);
+  label_60_fini:
+  label_70_init:
+    LOAD_CONST(1);
+    STORE("I");
+  label_70_fini:
+  label_80_init:
+  while_80_start:
+    LOAD_VAR("I");
+    LOAD_CONST(4);
+    SUB();
+    JUMP_IF_FALSE(while_80_end);
+  label_80_fini:
+  label_90_init:
+    LOAD_STR("While iteration: ");
+    PRINT(1);
+  label_90_fini:
+  label_100_init:
+    LOAD_VAR("I");
+    PRINT(1);
+  label_100_fini:
+  label_110_init:
+    LOAD_VAR("I");
+    LOAD_CONST(1);
+    ADD();
+    STORE("I");
+  label_110_fini:
+  label_120_init:
+    JUMP(while_80_start);
+  while_80_end:
+  label_120_fini:
+  label_130_init:
+    LOAD_STR("=== STAGE 3: FOR/NEXT WITH EXPLICIT STEP ===");
+    PRINT(1);
+  label_130_fini:
+  label_140_init:
+    LOAD_CONST(1);
+    STORE("J");
+    LOAD_CONST(5);
+    STORE("__lim_1");
+    LOAD_CONST(2);
+    STORE("__step_1");
+  for_1_top:
+    FOR_CONTINUE("J","__lim_1","__step_1");
+    JUMP_IF_FALSE(for_1_end);
+  label_140_fini:
+  label_150_init:
+    LOAD_STR("For J step 2: ");
+    PRINT(1);
+  label_150_fini:
+  label_160_init:
+    LOAD_VAR("J");
+    PRINT(1);
+  label_160_fini:
+  label_170_init:
+    STEP_VAR("J","__step_1");
+    JUMP(for_1_top);
+  for_1_end:
+  label_170_fini:
+    JUMP(__prog_end);
+  __prog_end: ;
+    return 0;
+}
+/* ===== end of generated GW-BASIC program ===== */

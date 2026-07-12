@@ -326,3 +326,19 @@ void bad_line_number(int n) {
 #define JUMP_IF_FALSE(label) if (!pop_truth()) goto label
 
 int main(void) {
+  label_10_init:
+    LOAD_STR("--- JUMP-TO-NON-EXISTING-LINE TRAP ---");
+    PRINT(1);
+  label_10_fini:
+  label_20_init:
+    bad_line_number(9999);
+  label_20_fini:
+  label_30_init:
+    LOAD_STR("If you see this line, the undefined-line check FAILED!");
+    PRINT(1);
+  label_30_fini:
+    JUMP(__prog_end);
+  __prog_end: ;
+    return 0;
+}
+/* ===== end of generated GW-BASIC program ===== */

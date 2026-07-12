@@ -326,3 +326,82 @@ void bad_line_number(int n) {
 #define JUMP_IF_FALSE(label) if (!pop_truth()) goto label
 
 int main(void) {
+  label_10_init:
+    LOAD_CONST(5);
+    DIM_ARR("A");
+  label_10_fini:
+  label_20_init:
+    LOAD_CONST(0);
+    STORE("I");
+    LOAD_CONST(5);
+    STORE("__lim_1");
+    LOAD_CONST(1);
+    STORE("__step_1");
+  for_1_top:
+    FOR_CONTINUE("I","__lim_1","__step_1");
+    JUMP_IF_FALSE(for_1_end);
+  label_20_fini:
+  label_30_init:
+    LOAD_VAR("I");
+    LOAD_VAR("I");
+    LOAD_VAR("I");
+    MUL();
+    STORE_ARR("A");
+  label_30_fini:
+  label_40_init:
+    STEP_VAR("I","__step_1");
+    JUMP(for_1_top);
+  for_1_end:
+  label_40_fini:
+  label_50_init:
+    LOAD_CONST(0);
+    STORE("I");
+    LOAD_CONST(5);
+    STORE("__lim_2");
+    LOAD_CONST(1);
+    STORE("__step_2");
+  for_2_top:
+    FOR_CONTINUE("I","__lim_2","__step_2");
+    JUMP_IF_FALSE(for_2_end);
+  label_50_fini:
+  label_60_init:
+    LOAD_VAR("I");
+    LOAD_ARR("A");
+    PRINT(1);
+  label_60_fini:
+  label_70_init:
+    STEP_VAR("I","__step_2");
+    JUMP(for_2_top);
+  for_2_end:
+  label_70_fini:
+  label_80_init:
+    LOAD_CONST(2.3);
+    CEIL();
+    PRINT(1);
+  label_80_fini:
+  label_90_init:
+    LOAD_CONST(2.7);
+    FLOOR();
+    PRINT(1);
+  label_90_fini:
+  label_100_init:
+    LOAD_CONST(1.5);
+    NEG();
+    FLOOR();
+    PRINT(1);
+  label_100_fini:
+  label_110_init:
+    LOAD_CONST(0);
+    SIN();
+    PRINT(1);
+  label_110_fini:
+  label_120_init:
+    LOAD_CONST(0);
+    COS();
+    PRINT(1);
+  label_120_fini:
+    JUMP(__prog_end);
+  __prog_end: ;
+    return 0;
+}
+/* ===== end of generated GW-BASIC program ===== */

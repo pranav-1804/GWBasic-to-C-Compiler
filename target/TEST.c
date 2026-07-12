@@ -326,3 +326,31 @@ void bad_line_number(int n) {
 #define JUMP_IF_FALSE(label) if (!pop_truth()) goto label
 
 int main(void) {
+  label_10_init:
+    LOAD_CONST(51);
+    STORE("A");
+  label_10_fini:
+  label_20_init:
+  while_20_start:
+    LOAD_VAR("A");
+    JUMP_IF_FALSE(while_20_end);
+  label_20_fini:
+  label_30_init:
+    LOAD_VAR("A");
+    PRINT(1);
+  label_30_fini:
+  label_40_init:
+    LOAD_VAR("A");
+    LOAD_CONST(1);
+    SUB();
+    STORE("A");
+  label_40_fini:
+  label_50_init:
+    JUMP(while_20_start);
+  while_20_end:
+  label_50_fini:
+    JUMP(__prog_end);
+  __prog_end: ;
+    return 0;
+}
+/* ===== end of generated GW-BASIC program ===== */

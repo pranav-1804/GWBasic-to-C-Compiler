@@ -326,3 +326,30 @@ void bad_line_number(int n) {
 #define JUMP_IF_FALSE(label) if (!pop_truth()) goto label
 
 int main(void) {
+  label_10_init:
+    LOAD_STR("--- DIVISION-BY-ZERO TRAP ---");
+    PRINT(1);
+  label_10_fini:
+  label_20_init:
+    LOAD_CONST(10);
+    STORE("A");
+  label_20_fini:
+  label_30_init:
+    LOAD_CONST(0);
+    STORE("B");
+  label_30_fini:
+  label_40_init:
+    LOAD_VAR("A");
+    LOAD_VAR("B");
+    DIV();
+    STORE("C");
+  label_40_fini:
+  label_50_init:
+    LOAD_STR("If you see this line, the divide-by-zero check FAILED!");
+    PRINT(1);
+  label_50_fini:
+    JUMP(__prog_end);
+  __prog_end: ;
+    return 0;
+}
+/* ===== end of generated GW-BASIC program ===== */
