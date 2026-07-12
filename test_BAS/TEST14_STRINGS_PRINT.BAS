@@ -1,0 +1,8 @@
+10 PRINT "--- CHR$, STR$, AND MULTI-ARGUMENT PRINT ---"
+20 LET A = 65
+30 PRINT "CHR$ of"; A; "is"; CHR$(A)
+40 LET N = 42
+50 LET S$ = "Value=" + STR$(N)
+60 PRINT S$
+70 PRINT 1, 2, 3
+80 PRINT "Done."
