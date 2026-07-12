@@ -42,6 +42,11 @@ public class GWBasic {
     int               forCounter   = 0;                 // unique id for FOR loops
     String            currentLine;
 
+    /* self-imposed rule: a variable/array name may be at most this many
+     * characters (a trailing '$' on a string name counts). A longer name is
+     * rejected as a BASIC source error - it is NOT silently cut off. */
+    static final int  MAX_NAME_LEN = 20;
+
     /* ============================================================
      *  main():
      *    1. read the whole .bas file
@@ -159,6 +164,12 @@ public class GWBasic {
             output("JUMP(label_%s_init)", lineImage);
         else
             output("bad_line_number(%s)", lineImage);
+    }
+    /* enforce the maximum variable-name length; too long -> BASIC source error */
+    public void checkName(String name) throws ParseException {
+        if (name.length() > MAX_NAME_LEN)
+            throw new ParseException("variable name '" + name + "' is too long: "
+                + name.length() + " characters (the maximum allowed is " + MAX_NAME_LEN + ")");
     }
 }
 PARSER_END(GWBasic)
@@ -310,8 +321,8 @@ void dimStmt():
     Token id;
 }
 {
-    <DIM> id=<NAME> <OPAREN> expr() <CPAREN> { output("DIM_ARR(\"%s\")", id.image); }
-    ( <COMMA> id=<NAME> <OPAREN> expr() <CPAREN> { output("DIM_ARR(\"%s\")", id.image); } )*
+    <DIM> id=<NAME> { checkName(id.image); } <OPAREN> expr() <CPAREN> { output("DIM_ARR(\"%s\")", id.image); }
+    ( <COMMA> id=<NAME> { checkName(id.image); } <OPAREN> expr() <CPAREN> { output("DIM_ARR(\"%s\")", id.image); } )*
 }
 
 void printStmt():
@@ -326,7 +337,7 @@ void letStmt():
     boolean isArray = false;
 }
 {
-    ( <LET> )? id=<NAME>
+    ( <LET> )? id=<NAME> { checkName(id.image); }
     ( <OPAREN> expr() <CPAREN> { isArray = true; } )?   /* index expr is pushed first */
     <EQUAL> expr()
     {
@@ -440,6 +451,7 @@ void forStmt():
 {
     <FOR> var=<NAME>
     {
+        checkName(var.image);
         id    = ++forCounter;
         v     = var.image;
         limv  = "__lim_"  + id;
@@ -461,12 +473,19 @@ void forStmt():
 }
 
 void nextStmt():
-{}
 {
-    <NEXT> ( <NAME> )?
+    Token v = null;
+}
+{
+    <NEXT> ( v=<NAME> )?
     {
         if (forStack.isEmpty()) throw new ParseException("NEXT without FOR");
         ForItem f = forStack.pop();
+        /* if NEXT names a variable, it must match the FOR it closes -> catches
+         * mismatched / improperly nested loops (e.g. FOR I ... NEXT J). */
+        if (v != null && !v.image.equals(f.var()))
+            throw new ParseException("NEXT " + v.image
+                + " does not match the open FOR " + f.var());
         output("STEP_VAR(\"%s\",\"%s\")", f.var(), f.stepVar());
         output("JUMP(%s)", f.topLabel());
         label(f.endLabel());
@@ -547,7 +566,7 @@ void fact():
     |   t=<DEC_NUMBER>   { output("LOAD_CONST(%s)", t.image); }
     |   t=<OCT_NUMBER>   { output("LOAD_CONST(%d)", Long.parseLong(t.image.substring(2), 8)); }
     |   t=<HEX_NUMBER>   { output("LOAD_CONST(%d)", Long.parseLong(t.image.substring(2), 16)); }
-    |   t=<NAME>
+    |   t=<NAME> { checkName(t.image); }
         ( <OPAREN> expr() <CPAREN>                 /* function call OR array element */
           {
               String fn = t.image.toUpperCase();
