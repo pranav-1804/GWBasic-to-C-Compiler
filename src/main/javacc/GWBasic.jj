@@ -191,6 +191,7 @@ TOKEN: {
 |   <GT:     ">">
 |   <COLON:  ":">
 |   <COMMA:  ",">
+|   <SEMI:   ";">
 }
 
 /* keywords must precede <NAME> so they win on an equal-length match */
@@ -326,9 +327,16 @@ void dimStmt():
 }
 
 void printStmt():
-{}
 {
-    <PRINT> expr() { output("PRINT()"); }
+    int n = 0;   /* argument count - determined by the parser and passed to PRINT */
+}
+{
+    <PRINT>
+    (
+        expr() { n++; }
+        ( ( <COMMA> | <SEMI> ) expr() { n++; } )*
+    )?
+    { output("PRINT(%d)", n); }
 }
 
 void letStmt():
@@ -575,6 +583,8 @@ void fact():
               else if (fn.equals("CEIL"))  output("CEIL()");    /* round up   */
               else if (fn.equals("FLOOR")) output("FLOOR()");   /* round down */
               else if (fn.equals("INT"))   output("FLOOR()");   /* GW-BASIC INT = floor */
+              else if (fn.equals("CHR$"))  output("CHR()");     /* code -> 1-char string */
+              else if (fn.equals("STR$"))  output("STR()");     /* number -> its string  */
               else                         output("LOAD_ARR(\"%s\")", t.image);
           }
         |
