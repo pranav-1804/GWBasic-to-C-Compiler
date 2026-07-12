@@ -43,11 +43,19 @@ static Value stack_pop(void) {
     return vstack[--vsp];
 }
 
-/* require a numeric operand; warn (do not crash) on type mismatch */
+/* controlled termination: print a meaningful message and stop (no crash).
+ * Marked noreturn so the compiler knows execution never continues past it. */
+__attribute__((noreturn))
+static void runtime_error(const char *msg) {
+    fprintf(stderr, "RUNTIME ERROR: %s; program terminated\n", msg);
+    exit(1);
+}
+
+/* require a numeric operand; a type mismatch is an illegal operation -> stop */
 static double as_num(Value v, const char *op) {
     if (v.type != T_NUM) {
-        fprintf(stderr, "RUNTIME WARNING: operator '%s' expected a number but got a string; using 0\n", op);
-        return 0.0;
+        fprintf(stderr, "RUNTIME ERROR: operator '%s' expected a number but got a string; program terminated\n", op);
+        exit(1);
     }
     return v.num;
 }
@@ -97,11 +105,10 @@ void LOAD_STR(const char *literal) {            /* literal still carries its sur
 
 void LOAD_VAR(const char *name) {
     VarSlot *s = var_find(name);
-    if (!s || !s->assigned) {                   /* unassigned variable -> warn, use default */
-        fprintf(stderr, "RUNTIME WARNING: variable '%s' used before assignment; using %s\n",
-                name, is_string_var(name) ? "\"\"" : "0");
-        stack_push(is_string_var(name) ? make_str(strdup("")) : make_num(0));
-        return;
+    if (!s || !s->assigned) {                   /* reading an unassigned variable -> controlled error */
+        char msg[128];
+        snprintf(msg, sizeof(msg), "variable '%s' used before assignment", name);
+        runtime_error(msg);
     }
     stack_push(s->val);
 }
@@ -109,9 +116,9 @@ void LOAD_VAR(const char *name) {
 void STORE(const char *name) {
     Value v = stack_pop();
     if (is_string_var(name) && v.type != T_STR)
-        fprintf(stderr, "RUNTIME WARNING: assigning a number to string variable '%s'\n", name);
+        runtime_error("type mismatch: assigning a number to a string variable");
     if (!is_string_var(name) && v.type != T_NUM)
-        fprintf(stderr, "RUNTIME WARNING: assigning a string to numeric variable '%s'\n", name);
+        runtime_error("type mismatch: assigning a string to a numeric variable");
     VarSlot *s = var_intern(name);
     s->val = v;
     s->assigned = 1;
@@ -159,9 +166,10 @@ void DIM_ARR(const char *name) {
 void LOAD_ARR(const char *name) {
     long idx = (long)as_num(stack_pop(), "array index");
     ArrSlot *a = arr_need(name);
-    if (idx < 0 || idx >= a->size) {
-        fprintf(stderr, "RUNTIME WARNING: index %ld out of range for array '%s'; using 0\n", idx, name);
-        stack_push(make_num(0)); return;
+    if (idx < 0 || idx >= a->size) {            /* access to invalid data -> controlled error */
+        char msg[128];
+        snprintf(msg, sizeof(msg), "index %ld out of range for array '%s' (0..%ld)", idx, name, a->size - 1);
+        runtime_error(msg);
     }
     stack_push(a->data[idx]);
 }
@@ -169,9 +177,10 @@ void STORE_ARR(const char *name) {
     Value v   = stack_pop();
     long  idx = (long)as_num(stack_pop(), "array index");
     ArrSlot *a = arr_need(name);
-    if (idx < 0 || idx >= a->size) {
-        fprintf(stderr, "RUNTIME WARNING: index %ld out of range for array '%s'; ignored\n", idx, name);
-        return;
+    if (idx < 0 || idx >= a->size) {            /* access to invalid data -> controlled error */
+        char msg[128];
+        snprintf(msg, sizeof(msg), "index %ld out of range for array '%s' (0..%ld)", idx, name, a->size - 1);
+        runtime_error(msg);
     }
     a->data[idx] = v;
 }
@@ -193,13 +202,13 @@ void MUL(void) { Value b = stack_pop(), a = stack_pop(); stack_push(make_num(as_
 void DIV(void) {
     Value b = stack_pop(), a = stack_pop();
     double db = as_num(b, "/");
-    if (db == 0) { fprintf(stderr, "RUNTIME WARNING: division by zero; using 0\n"); stack_push(make_num(0)); return; }
+    if (db == 0) runtime_error("division by zero");
     stack_push(make_num(as_num(a, "/") / db));
 }
 void MOD(void) {
     Value b = stack_pop(), a = stack_pop();
     double db = as_num(b, "%");
-    if (db == 0) { fprintf(stderr, "RUNTIME WARNING: modulo by zero; using 0\n"); stack_push(make_num(0)); return; }
+    if (db == 0) runtime_error("modulo by zero");
     double da = as_num(a, "%");
     stack_push(make_num(da - (double)((long)(da / db)) * db));   /* remainder; avoids libm */
 }
@@ -231,20 +240,50 @@ void COS(void)   { Value a = stack_pop(); stack_push(make_num(cos(as_num(a, "COS
 void CEIL(void)  { Value a = stack_pop(); stack_push(make_num(ceil(as_num(a, "CEIL"))));  }  /* round up   */
 void FLOOR(void) { Value a = stack_pop(); stack_push(make_num(floor(as_num(a, "FLOOR")))); } /* round down */
 
+/* CHR$(code) -> a one-character string;  STR$(number) -> the number as text */
+void CHR(void) {
+    int code = (int)as_num(stack_pop(), "CHR$");
+    char *s = (char *)malloc(2);
+    s[0] = (char)code; s[1] = '\0';
+    stack_push(make_str(s));
+}
+void STR(void) {
+    double d = as_num(stack_pop(), "STR$");
+    char buf[64];
+    if (d == (long)d) snprintf(buf, sizeof(buf), "%ld", (long)d);
+    else              snprintf(buf, sizeof(buf), "%g", d);
+    stack_push(make_str(strdup(buf)));
+}
+
 /* truth value for conditional jumps */
 int pop_truth(void) {
     Value v = stack_pop();
-    if (v.type == T_STR) { fprintf(stderr, "RUNTIME WARNING: string used as a condition; treated as false\n"); return 0; }
+    if (v.type == T_STR) runtime_error("a string was used where a numeric condition is required");
     return v.num != 0;
 }
 
-/* ---------- PRINT ---------- */
-void PRINT(void) {
-    Value v = stack_pop();
-    if (v.type == T_STR) { printf("%s\n", v.str); return; }
-    double d = v.num;
-    if (d == (long)d) printf("%ld\n", (long)d);     /* whole numbers print without a decimal point */
-    else              printf("%g\n", d);
+/* ---------- PRINT (variable number of arguments) ----------
+ * The parser counts the arguments and passes that count as n; the n values are
+ * on the operand stack (arg1 lowest .. argN on top). We print them in order,
+ * separated by a space, then a newline. PRINT with no arguments prints a blank
+ * line. */
+#define PRINT_MAX 256
+void PRINT(int n) {
+    if (n <= 0) { printf("\n"); return; }
+    if (n > PRINT_MAX) { fprintf(stderr, "RUNTIME ERROR: too many PRINT arguments\n"); exit(1); }
+    Value tmp[PRINT_MAX];
+    for (int i = n - 1; i >= 0; i--) tmp[i] = stack_pop();   /* restore left-to-right order */
+    for (int i = 0; i < n; i++) {
+        Value v = tmp[i];
+        if (v.type == T_STR) printf("%s", v.str);
+        else {
+            double d = v.num;
+            if (d == (long)d) printf("%ld", (long)d);
+            else              printf("%g", d);
+        }
+        if (i < n - 1) printf(" ");
+    }
+    printf("\n");
 }
 
 /* ---------- FOR / NEXT helpers ---------- */
@@ -271,12 +310,16 @@ void gosub_push(int rid) {
     gosub_stack[gsp++] = rid;
 }
 int gosub_pop(void) {
-    if (gsp <= 0) { fprintf(stderr, "RUNTIME WARNING: RETURN without GOSUB; ignored\n"); return -1; }
+    if (gsp <= 0) runtime_error("RETURN without a matching GOSUB");
     return gosub_stack[--gsp];
 }
 
-/* ---------- undefined GOTO/GOSUB target ---------- */
-void bad_line_number(int n) { fprintf(stderr, "RUNTIME WARNING: jump to undefined line %d; ignored\n", n); }
+/* ---------- undefined GOTO/GOSUB target -> controlled error ---------- */
+void bad_line_number(int n) {
+    char msg[64];
+    snprintf(msg, sizeof(msg), "jump to non-existing line %d", n);
+    runtime_error(msg);
+}
 
 /* ---------- jump macros ---------- */
 #define JUMP(label)          goto label
